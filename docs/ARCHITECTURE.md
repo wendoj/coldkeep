@@ -47,6 +47,10 @@ Each module runs as its own process, under its own uid, at its own `SCHED_FIFO` 
 | `auditd` | 1106 | 20 | `/dev/coldkeep/audit`; `/data/coldkeep/audit.bin` (0600) | records accepted from trusted uids only |
 | `mgmtd` | 1105 | 10 | TCP 8080 (JSON lines) | the network; holds **no** abilities (all denied and locked) |
 | `bridge` | 1107 | 8 | TCP 7070 (JSON lines, read-only) | the host relay; holds **no** abilities, opens no controller, maps shared memory read-only |
+| `keyconsole` | 1108 | 20 | `/dev/coldkeep/key` (root, 0600), `/dev/coldkeep/keyq` (owner 1104, 0600) | the store operator (root shell) approves or rejects; only `brokerd` can queue requests; holds `coldkeep.envelope.write` |
+| `sup` | 0 | 41 | — | starts the trusted processes in order and restarts any that dies; times recovery until the resource manager is attached |
+
+`governord` also attaches `/dev/coldkeep/gov-key` (owner 1108, 0600). It applies a key approval only if the sender is `keyconsole`'s uid and holds `coldkeep.envelope.write`, which it checks with `ConnectClientInfoAble` on every message.
 
 `governord` creates `coldkeep.plant.write` and is the only process that keeps it when it
 drops root; on QNX 8.0 even root does not hold a newly created custom ability
@@ -62,6 +66,8 @@ governor's status text every 5 s. Clients cannot send it commands.
 **Legacy mode** runs the same plant, controllers and auditor, but `casectl -L` performs
 no ability check and `mgmtd -L` stays root and writes the controllers directly; there is
 no governor or broker.
+
+**Supervision.** In protected mode, `sup` starts `casectl` ×N, `keyconsole`, `governord`, `brokerd` and `mgmtd` in that order. Each one starts when the previous one's resource manager is attached. When one dies, `sup` restarts it at once and journals the recovery time. `governord` saves its state at start and after every decision, so a restart restores it. Clients (`brokerd`, `mgmtd`, `keyconsole`, `governord`'s controller fds) reconnect once after a restart.
 
 **Fail-safe (G6).** `governord` sends a heartbeat `devctl` to every controller every
 250 ms of wall time; a controller that misses heartbeats for 2 s of wall time holds its
