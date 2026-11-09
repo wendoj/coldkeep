@@ -132,6 +132,18 @@ describe("compare readouts are computed from data", () => {
   });
 });
 
+describe("key requests", () => {
+  it("follow the local console's journal records", () => {
+    const s = new StoreModel("protected");
+    s.apply({ type: "decision", t: 1093, cmd: "disable_alarms", verdict: "NEEDS_KEY", rule: "G5", reason: "dangerous: queued as key request #1" });
+    s.apply({ type: "decision", t: 1100, cmd: "change_envelope", verdict: "NEEDS_KEY", rule: "G5", reason: "dangerous: queued as key request #2" });
+    expect(s.keyRequests.map((d) => s.keyState(d))).toEqual(["pending", "pending"]);
+    s.apply({ type: "audit", seq: 9, text: "t=1200 event key request #1 approved at the local console: ALLOW G5 alarms disabled with store key" });
+    s.apply({ type: "audit", seq: 10, text: "t=1201 event key request #2 rejected at the local console" });
+    expect(s.keyRequests.map((d) => s.keyState(d))).toEqual(["approved", "rejected"]);
+  });
+});
+
 describe("compliance csv", () => {
   it("has one row per case per record", () => {
     const s = load(join(ROOT, "tests/golden/demo-main.legacy.jsonl"));

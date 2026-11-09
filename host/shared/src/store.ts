@@ -41,6 +41,8 @@ export class StoreModel {
   log: LogEntry[] = [];
   govStatus: string | null = null;
   summary: Summary | null = null;
+  /** Key request outcomes at the store's local console, from keyconsole's journal records. */
+  keyStates = new Map<number, "approved" | "rejected" | "failed">();
   private lastSampleT: number | null = null;
 
   constructor(mode: Mode) {
@@ -77,9 +79,12 @@ export class StoreModel {
       case "alarm":
         this.log.push({ t: ev.t, kind: "alarm", text: `case ${ev.case} product ${ev.product.toFixed(1)} °C at limit ${ev.limit}` });
         break;
-      case "note":
+      case "note": {
         this.log.push({ t: ev.t, kind: "note", text: ev.text });
+        const k = /^key request #(\d+) (approved|rejected|approval failed)/.exec(ev.text);
+        if (k) this.keyStates.set(Number(k[1]), k[2] === "approval failed" ? "failed" : (k[2] as "approved" | "rejected"));
         break;
+      }
       case "proc":
         this.log.push({ t: ev.t, kind: "proc", text: `${ev.proc} ${ev.what}` });
         break;
@@ -121,9 +126,15 @@ export class StoreModel {
     if (this.history.length > HISTORY_MAX) this.history.splice(0, this.history.length - HISTORY_MAX);
   }
 
-  /** Pending key requests: G5 NEEDS_KEY decisions (approval happens at the store, never here). */
+  /** Key requests: G5 NEEDS_KEY decisions (approval happens at the store, never here). */
   get keyRequests(): Decision[] {
     return this.decisions.filter((d) => d.verdict === "NEEDS_KEY");
+  }
+
+  /** "pending", or the outcome recorded at the local console, for a NEEDS_KEY decision. */
+  keyState(d: Decision): "pending" | "approved" | "rejected" | "failed" {
+    const m = /key request #(\d+)/.exec(d.reason ?? "");
+    return (m && this.keyStates.get(Number(m[1]))) || "pending";
   }
 }
 

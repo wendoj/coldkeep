@@ -37,7 +37,14 @@ export default function KeysPage() {
                     <td className="num">{fmtSim(d.t)}</td>
                     <td>{d.user ?? "—"} via {d.origin ?? "mgmt"}</td>
                     <td className="mono">{d.cmd}{d.case ? ` case=${d.case}` : ""}</td>
-                    <td>{d.reason} · <b>approve at the store&apos;s local console</b></td>
+                    <td data-testid="key-state">
+                      {s.keyState(d) === "pending" ? (
+                        <>pending · <b>approve at the store&apos;s local console</b></>
+                      ) : (
+                        <b>{s.keyState(d)} at the store&apos;s local console</b>
+                      )}
+                      <div className="reason">{d.reason}</div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
