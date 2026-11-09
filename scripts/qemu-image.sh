@@ -7,6 +7,7 @@
 #
 #   scripts/qemu-image.sh ~/coldkeep-qemu/store-a store-a [~/.ssh/id_ed25519.pub]
 #
+# Extra mkqnximage options go in QNX_IMAGE_OPTS, e.g. QNX_IMAGE_OPTS="--secpol=develop".
 # The directory must be under $HOME (the container sees $HOME at /home/$USER).
 # Root can then log in with the given SSH key: ssh -p 2222 root@127.0.0.1
 set -euo pipefail
@@ -31,7 +32,7 @@ mki() {
 }
 
 # First pass creates local/snippets with the chosen options.
-mki --type=qemu --arch=x86_64 --hostname="$HOST" --ssh-ident="$CKEY" --build >/dev/null
+mki --type=qemu --arch=x86_64 --hostname="$HOST" --ssh-ident="$CKEY" ${QNX_IMAGE_OPTS:-} --build >/dev/null
 
 # The SDP's OpenSSH sshd needs its sshd-auth helper, which the stock image omits.
 S=$DIR/local/snippets
