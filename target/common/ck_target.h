@@ -32,7 +32,8 @@
 #define CK_SHM_ACT      "/coldkeep_act"
 #define CK_DATA_DIR     "/data/coldkeep"
 #define CK_JOURNAL      CK_DATA_DIR "/audit.bin"
-#define CK_GOV_STATE    CK_DATA_DIR "/gov.state"
+#define CK_GOV_DIR      CK_DATA_DIR "/gov"       /* owned by governord, 0700 */
+#define CK_GOV_STATE    CK_GOV_DIR "/state"
 
 #define CK_ABILITY_PLANT_WRITE "coldkeep.plant.write"
 
