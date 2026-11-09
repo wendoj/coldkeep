@@ -14,9 +14,18 @@
 | ID | Capability | Defence |
 |---|---|---|
 | A1 | Valid admin credentials (the default `admin/admin`, deliberately) and the full documented API | Broker classification + governor G1–G5 |
-| A2 | Unlimited request rate | Per-session rate limit; real-time priorities on QNX (to be measured) |
+| A2 | Unlimited request rate | Per-session rate limit. `mgmtd` runs at priority 10, below `casectl` (40). On the target, a flood that saturated `mgmtd` did not increase loop jitter ([RESULTS.md](RESULTS.md)). `mgmtd` ignores SIGPIPE, so a client that hangs up cannot kill it, and `sup` restarts it if it dies. |
 | A3 | Code execution inside `mgmtd` (simulated switch, no real exploit) | Kernel-enforced: abilities dropped and locked, custom ability `coldkeep.plant.write`, uid and file ownership on every channel. On the target, 0 of the 4 attempts succeeded in all 5 recorded runs ([RESULTS.md](RESULTS.md)). *(In sim-host this is a model.)* |
-| A4 | Crash of `governord` | Supervisor restart; G6 hold in `casectl` |
+| A4 | Crash or hang of `governord` | `sup` restarts it (about 30 ms on the target), and it restores its state from disk, so G2/G3 history survives. If the governor hangs, `casectl` holds its last-known-good configuration after 2 s without heartbeats (G6). All recorded on the target ([RESULTS.md](RESULTS.md)). |
+
+## Store key (G5)
+Dangerous changes are queued in `keyconsole`, never applied from the network. This covers alarms, the envelope and the defrost schedule.
+
+- Only root at the store can read or write `/dev/coldkeep/key` (mode 0600).
+- `governord` accepts an approval only on `/dev/coldkeep/gov-key`, whose owner is `keyconsole`'s uid (mode 0600).
+- On every approval message, `governord` checks that the sender is `keyconsole`'s uid **and** holds the custom ability `coldkeep.envelope.write`. Only `keyconsole` keeps that ability.
+- On the target, `mgmtd`'s uid gets "Permission denied" on both paths.
+- Pending requests live in `keyconsole`'s memory. If it restarts they are lost, which fails safe: nothing is applied.
 
 ## Not defended (by design)
 - Physical access to the store or the QNX node.
