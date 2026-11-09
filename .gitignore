@@ -48,3 +48,5 @@ test-results/
 target/qnxcheck/able_server
 target/qnxcheck/able_client
 target/qnxcheck/results*.txt
+recordings/
+__pycache__/
