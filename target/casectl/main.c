@@ -45,6 +45,12 @@ static ck_plant_shm_t *g_ps;
 static ck_act_shm_t *g_as;
 static uint64_t g_period_ns, g_last_tick_wall, g_jit_window_start;
 static uint64_t g_jit_sum, g_jit_n, g_jit_max;
+static int g_audit_fd = -1;
+static bool g_was_hold;
+/* cumulative loop-jitter histogram since start (read it twice and subtract for a window) */
+static const uint32_t k_jit_edges_us[] = {100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000};
+#define JIT_BUCKETS (sizeof k_jit_edges_us / sizeof k_jit_edges_us[0] + 1)
+static uint64_t g_jit_hist[JIT_BUCKETS], g_jit_total_max, g_jit_total_n;
 
 static void publish_slot(void) {
   ck_act_slot_t *a = &g_as->a[g_id - 1];
@@ -95,13 +101,21 @@ static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, RESMGR_OCB_T *ocb)
 
 static int render(char *buf, size_t cap) {
   const ck_shm_case_t *c = &g_ps->c[g_id - 1];
+  char hist[256];
+  size_t o = 0;
+  for (size_t b = 0; b < JIT_BUCKETS && o < sizeof hist; b++)
+    o += (size_t)snprintf(hist + o, sizeof hist - o, "%s%llu", b ? "," : "", (unsigned long long)g_jit_hist[b]);
   return snprintf(buf, cap,
                   "case %u %s mode=%s air=%.2f product=%.2f evap=%.2f setpoint=%.1f "
-                  "compressor=%u heater=%u fans=%u defrost=%u hold=%u\n",
+                  "compressor=%u heater=%u fans=%u defrost=%u hold=%u\n"
+                  "jitter period_us=%llu ticks=%llu max_us=%llu "
+                  "hist_edges_us=100,250,500,1000,2000,5000,10000,20000,50000 hist=%s\n",
                   g_id, ck_case_type_name(g_ctl.type), g_legacy ? "legacy" : "protected",
                   (double)c->air_c, (double)c->product_c, (double)c->evap_c, (double)g_ctl.setpoint_c,
                   g_out.compressor_on, g_out.heater_on, g_out.fans_on,
-                  ck_ctl_in_defrost(&g_ctl) ? 1u : 0u, g_ctl.hold ? 1u : 0u);
+                  ck_ctl_in_defrost(&g_ctl) ? 1u : 0u, g_ctl.hold ? 1u : 0u,
+                  (unsigned long long)(g_period_ns / 1000), (unsigned long long)g_jit_total_n,
+                  (unsigned long long)(g_jit_total_max / 1000), hist);
 }
 
 static int io_read(resmgr_context_t *ctp, io_read_t *msg, RESMGR_OCB_T *ocb) {
@@ -152,6 +166,11 @@ static int on_tick(message_context_t *ctp, int code, unsigned flags, void *handl
     const uint64_t jit = gap > g_period_ns ? gap - g_period_ns : g_period_ns - gap;
     g_jit_sum += jit; g_jit_n++;
     if (jit > g_jit_max) g_jit_max = jit;
+    size_t b = 0;
+    while (b < JIT_BUCKETS - 1 && jit / 1000 >= k_jit_edges_us[b]) b++;
+    g_jit_hist[b]++;
+    g_jit_total_n++;
+    if (jit > g_jit_total_max) g_jit_total_max = jit;
   }
   g_last_tick_wall = wall;
   if (wall - g_jit_window_start >= CK_NS_PER_S) {
@@ -166,6 +185,15 @@ static int on_tick(message_context_t *ctp, int code, unsigned flags, void *handl
   const ck_probe_t probe = {snap.c[g_id - 1].air_c, snap.c[g_id - 1].product_c, snap.c[g_id - 1].evap_c};
   ck_ctl_tick(&g_ctl, &probe, snap.sim_ns, &g_out);
   publish_slot();
+  if (g_ctl.hold != g_was_hold) { /* G6 transitions go to the journal */
+    g_was_hold = g_ctl.hold;
+    if (g_audit_fd < 0) g_audit_fd = open(CK_DEV_AUDIT, O_RDONLY);
+    if (g_ctl.hold)
+      ck_audit_event(g_audit_fd, snap.sim_ns, "case %u: G6 hold, no governor heartbeat; keeping setpoint %.1f",
+                     g_id, (double)g_ctl.setpoint_c);
+    else
+      ck_audit_event(g_audit_fd, snap.sim_ns, "case %u: G6 released, governor heartbeat back", g_id);
+  }
   return 0;
 }
 
