@@ -1,0 +1,10 @@
+# A1 only: credentialed takeover with the default admin/admin credentials.
+name: a1
+seed: 7
+speed: 30
+cases: [chilled x4, frozen x2, coldroom x2]
+expect_legacy_exceeds: 1
+events:
+  - { t: 0,    do: baseline }
+  - { t: 600,  do: attack, campaign: A1 }
+  - { t: 3600, do: end }

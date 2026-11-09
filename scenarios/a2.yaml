@@ -1,0 +1,11 @@
+# A2 only: API flood. On the host this shows the broker's rate limit only;
+# control-loop jitter must be measured on QNX (docs/RESULTS.md).
+name: a2
+seed: 7
+speed: 30
+cases: [chilled x4, frozen x2, coldroom x2]
+expect_legacy_exceeds: 0
+events:
+  - { t: 0,    do: baseline }
+  - { t: 600,  do: attack, campaign: A2 }
+  - { t: 1200, do: end }

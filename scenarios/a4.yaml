@@ -1,0 +1,10 @@
+# A4 only: governord crashes; the supervisor restarts it, G6 holds meanwhile.
+name: a4
+seed: 7
+speed: 30
+cases: [chilled x4, frozen x2, coldroom x2]
+expect_legacy_exceeds: 0
+events:
+  - { t: 0,    do: baseline }
+  - { t: 600,  do: attack, campaign: A4 }
+  - { t: 1800, do: end }

@@ -1,0 +1,14 @@
+# Main demo. Times are sim seconds; speed is the wall-clock
+# multiplier used on the QNX target (30x: one sim hour in two minutes).
+name: demo-main
+seed: 7
+speed: 30
+cases: [chilled x4, frozen x2, coldroom x2]
+expect_legacy_exceeds: 1
+events:
+  - { t: 0,    do: baseline }
+  - { t: 600,  do: attack, campaign: A1 }      # credentialed takeover
+  - { t: 1500, do: attack, campaign: A2 }      # API flood
+  - { t: 2100, do: attack, campaign: A3 }      # compromised web process
+  - { t: 2700, do: kill, proc: governord }     # A4 crash
+  - { t: 3600, do: end }
