@@ -5,7 +5,7 @@ include common.mk
 
 CORE_SRCS := common.c prng.c thermal.c plant.c control.c governor.c broker.c journal.c \
              metrics.c proto.c
-PROCS     ?= plantsim casectl governord brokerd mgmtd auditd bridge sup
+PROCS     ?= plantsim casectl governord brokerd mgmtd auditd bridge sup ckflood
 
 OUT       := build/$(ARCH)
 CORE_OBJS := $(CORE_SRCS:%.c=$(OUT)/core/%.o)

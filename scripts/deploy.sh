@@ -9,12 +9,12 @@ MODE=${2:-}
 ARCH=${ARCH:-x86_64}
 cd "$(dirname "$0")/.."
 B=target/build/$ARCH
-for p in plantsim casectl auditd governord brokerd mgmtd bridge sup; do
+for p in plantsim casectl auditd governord brokerd mgmtd bridge sup ckflood; do
   [ -x "$B/$p" ] || { echo "missing $B/$p: run scripts/qnx-build.sh target" >&2; exit 1; }
 done
 scripts/qnx-ssh.sh "$SLOT" 'mkdir -p /data/coldkeep/bin; [ -f /data/coldkeep/bin/coldkeep-start.sh ] && sh /data/coldkeep/bin/coldkeep-start.sh stop >/dev/null; true'
 scripts/qnx-scp.sh "$SLOT" /data/coldkeep/bin "$B/plantsim" "$B/casectl" "$B/auditd" "$B/governord" \
-  "$B/brokerd" "$B/mgmtd" "$B/bridge" "$B/sup" target/scripts/coldkeep-start.sh
+  "$B/brokerd" "$B/mgmtd" "$B/bridge" "$B/sup" "$B/ckflood" target/scripts/coldkeep-start.sh
 echo "deployed to slot $SLOT"
 if [ -n "$MODE" ]; then
   out=$(scripts/qnx-ssh.sh "$SLOT" "sh /data/coldkeep/bin/coldkeep-start.sh $MODE ${3:-7} ${4:-30}")
