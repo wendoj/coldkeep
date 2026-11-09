@@ -2,10 +2,11 @@
 //
 // COLDKEEP host relay: target bridges (or recordings) -> WebSocket for the dashboard.
 //
-//   live:    relay --store legacy=127.0.0.1:17071 --store protected=127.0.0.1:17070 [--record run1]
+//   live:    relay --store legacy=127.0.0.1:17071 --store protected=127.0.0.1:17070 [--record run1] [--end 3600]
 //   replay:  relay --replay a.legacy.jsonl --replay a.protected.jsonl [--rate 120]
 //
-// Options: --port 7071 (WebSocket + JSON hello over HTTP), --out ../recordings
+// Options: --port 7071 (WebSocket + JSON hello over HTTP), --out ../recordings,
+//          --end <sim s>: in live mode, stop (and close the recording) once every store reaches it
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -24,6 +25,7 @@ const { values } = parseArgs({
     port: { type: "string", default: "7071" },
     record: { type: "string" },
     out: { type: "string", default: join(ROOT, "recordings") },
+    end: { type: "string" },
   },
 });
 
@@ -31,6 +33,7 @@ async function main() {
   const stops: (() => void)[] = [];
   let recorder: Recorder | null = null;
   let hub: Hub;
+  let shutdown = async () => {};
 
   if (values.replay.length) {
     const files = values.replay.map((p) => loadRecording(resolve(p)));
@@ -46,10 +49,24 @@ async function main() {
       return { store: Mode.parse(m[1]), host: m[2]!, port: Number(m[3]) };
     });
     hub = new Hub({ kind: "hello", source: "live", stores: targets.map((t) => t.store) });
+    const reached = new Set<string>(); // stores past --end: nothing more is recorded for them
     if (values.record) {
       recorder = new Recorder(resolve(values.out), values.record, gitSha(ROOT));
       const r = recorder;
-      hub.onEvent((store, ev) => r.record(store, ev));
+      hub.onEvent((store, ev) => {
+        if (!reached.has(store)) r.record(store, ev);
+      });
+    }
+    if (values.end !== undefined) {
+      const end = Number(values.end);
+      hub.onEvent((store, ev) => {
+        if (ev.type !== "telemetry" || ev.t < end || reached.has(store)) return;
+        reached.add(store);
+        if (reached.size === targets.length) {
+          console.log(`relay: every store reached sim t=${end}`);
+          void shutdown();
+        }
+      });
     }
     const port = await hub.listen(Number(values.port));
     console.log(`relay: live from ${targets.map((t) => `${t.store}=${t.host}:${t.port}`).join(", ")} on ws://127.0.0.1:${port}`);
@@ -60,7 +77,7 @@ async function main() {
     process.exit(2);
   }
 
-  const shutdown = async () => {
+  shutdown = async () => {
     for (const s of stops) s();
     if (recorder) for (const p of await recorder.close()) console.log(`relay: recorded ${p}`);
     hub.close();
