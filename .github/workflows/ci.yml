@@ -13,3 +13,11 @@ jobs:
         run: make test
       - name: full property sweep (10k runs x 1k commands)
         run: make proptest-full
+  sanitizers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: core tests under ASan + UBSan
+        env:
+          CFLAGS: -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all
+        run: make -C core unit proptest CK_PROP_RUNS=200
