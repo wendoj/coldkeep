@@ -30,7 +30,23 @@ static ck_envelope_t g_env;
 static ck_broker_t g_br;
 static ck_keyq_t g_keyq;
 static ck_plant_shm_t *g_ps;
-static int g_gov_fd = -1, g_audit_fd = -1;
+static int g_gov_fd = -1, g_audit_fd = -1, g_key_fd = -1;
+
+/* Queue a dangerous command at the store's key console; returns its id, 0 if unreachable. */
+static uint64_t to_keyconsole(const ck_cmd_t *cmd) {
+  ck_msg_cmd_t m;
+  memset(&m, 0, sizeof m);
+  m.hdr.type = CK_MSG_KEYREQ;
+  m.cmd = *cmd;
+  uint64_t id = 0;
+  for (int attempt = 0; attempt < 2; attempt++) {
+    if (g_key_fd < 0) g_key_fd = open(CK_DEV_KEYQ, O_RDWR);
+    if (g_key_fd >= 0 && MsgSend(g_key_fd, &m, sizeof m, &id, sizeof id) != -1) return id;
+    if (g_key_fd >= 0) close(g_key_fd); /* keyconsole restarted: reconnect once */
+    g_key_fd = -1;
+  }
+  return 0;
+}
 
 static int forward(const ck_cmd_t *cmd, ck_decision_t *d) {
   ck_msg_cmd_t m;
@@ -69,10 +85,15 @@ static int on_cmd(message_context_t *ctp, int type, unsigned flags, void *handle
       if (d.rule_id != CK_RULE_RATE) ck_audit_decision(g_audit_fd, &d, now); /* rate hits are counted */
       break;
     case BROKER_NEEDS_KEY: {
-      const uint64_t req = ck_keyq_push(&g_keyq, &m.cmd);
       char why[96];
-      if (req) snprintf(why, sizeof why, "dangerous: queued as key request #%llu", (unsigned long long)req);
-      else snprintf(why, sizeof why, "dangerous: key queue full, dropped");
+      const uint64_t req = to_keyconsole(&m.cmd);
+      if (req) {
+        snprintf(why, sizeof why, "dangerous: queued as key request #%llu", (unsigned long long)req);
+      } else { /* keyconsole down: keep it here; nothing is applied either way */
+        const uint64_t local = ck_keyq_push(&g_keyq, &m.cmd);
+        if (local) snprintf(why, sizeof why, "dangerous: key console down; held as #%llu", (unsigned long long)local);
+        else snprintf(why, sizeof why, "dangerous: key queue full, dropped");
+      }
       ck_strlcpy(d.reason, why, sizeof d.reason);
       ck_audit_decision(g_audit_fd, &d, now);
       break;
