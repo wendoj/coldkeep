@@ -6,7 +6,8 @@
 #   scripts/qnx-deploy.sh <target-ip> target/qnxcheck able_server able_client run-checks.sh
 #
 # Env: QNX_USER (default qnxuser), QNX_PORT (default 22), QNX_DEST (default ckcheck,
-# relative to the user's home on the target).
+# relative to the user's home on the target), QNX_SSH_OPTS (extra ssh/scp options,
+# e.g. "-o UserKnownHostsFile=$HOME/coldkeep-qemu/known_hosts").
 set -euo pipefail
 
 IP=${1:?usage: qnx-deploy.sh <ip> <dir> <files...>}
@@ -17,6 +18,7 @@ PORT=${QNX_PORT:-22}
 DEST=${QNX_DEST:-ckcheck}
 
 cd "$(dirname "$0")/../$DIR"
-ssh -p "$PORT" "$USER_T@$IP" "mkdir -p $DEST"
-scp -P "$PORT" "$@" "$USER_T@$IP:$DEST/"
+read -r -a OPTS <<< "${QNX_SSH_OPTS:-}"
+ssh "${OPTS[@]}" -p "$PORT" "$USER_T@$IP" "mkdir -p $DEST"
+scp "${OPTS[@]}" -P "$PORT" "$@" "$USER_T@$IP:$DEST/"
 echo "copied to $USER_T@$IP:~/$DEST"
