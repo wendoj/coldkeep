@@ -16,6 +16,9 @@ import { Recorder, gitSha } from "./recorder";
 import { liveSource, loadRecording, replaySource } from "./sources";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+// `npm run relay` runs this from host/relay; resolve paths from where the user ran npm
+const CWD = process.env.INIT_CWD ?? process.cwd();
+const fromCwd = (p: string) => resolve(CWD, p);
 
 const { values } = parseArgs({
   options: {
@@ -36,7 +39,7 @@ async function main() {
   let shutdown = async () => {};
 
   if (values.replay.length) {
-    const files = values.replay.map((p) => loadRecording(resolve(p)));
+    const files = values.replay.map((p) => loadRecording(fromCwd(p)));
     const rate = values.rate === "max" ? Infinity : Number(values.rate);
     hub = new Hub({ kind: "hello", source: "replay", stores: files.map((f) => f.store), files: files.map((f) => f.path) });
     const port = await hub.listen(Number(values.port));
@@ -51,7 +54,7 @@ async function main() {
     hub = new Hub({ kind: "hello", source: "live", stores: targets.map((t) => t.store) });
     const reached = new Set<string>(); // stores past --end: nothing more is recorded for them
     if (values.record) {
-      recorder = new Recorder(resolve(values.out), values.record, gitSha(ROOT));
+      recorder = new Recorder(fromCwd(values.out), values.record, gitSha(ROOT));
       const r = recorder;
       hub.onEvent((store, ev) => {
         if (!reached.has(store)) r.record(store, ev);

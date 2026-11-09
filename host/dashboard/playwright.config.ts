@@ -2,9 +2,11 @@
 //
 // Smoke test of the dashboard in replay mode: the relay replays a recorded QEMU
 // run as fast as possible and the dashboard must show readouts computed from it.
+import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
 
-const RUN = "../../docs/evidence/runs/qemu-run1";
+// absolute, because the relay resolves relative paths from where npm was run
+const RUN = join(import.meta.dirname, "../../docs/evidence/runs/qemu-run1");
 
 export default defineConfig({
   testDir: "e2e",
