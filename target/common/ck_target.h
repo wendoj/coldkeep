@@ -28,6 +28,9 @@
 #define CK_DEV_BROKER   "/dev/coldkeep/broker"
 #define CK_DEV_AUDIT    "/dev/coldkeep/audit"
 #define CK_DEV_STATUS   "/dev/coldkeep/status"
+#define CK_DEV_KEY      "/dev/coldkeep/key"     /* local operator: list, approve, reject (root only) */
+#define CK_DEV_KEYQ     "/dev/coldkeep/keyq"    /* brokerd -> keyconsole: new key requests */
+#define CK_DEV_GOVKEY   "/dev/coldkeep/gov-key" /* keyconsole -> governord: approved commands */
 #define CK_SHM_PLANT    "/coldkeep_plant"
 #define CK_SHM_ACT      "/coldkeep_act"
 #define CK_DATA_DIR     "/data/coldkeep"
@@ -36,6 +39,7 @@
 #define CK_GOV_STATE    CK_GOV_DIR "/state"
 
 #define CK_ABILITY_PLANT_WRITE "coldkeep.plant.write"
+#define CK_ABILITY_ENVELOPE_WRITE "coldkeep.envelope.write" /* held by keyconsole only */
 
 /* ---- user ids (no passwd entries needed; uid == gid) ---- */
 #define CK_UID_PLANT  1101
@@ -45,6 +49,7 @@
 #define CK_UID_MGMT   1105
 #define CK_UID_AUDIT  1106
 #define CK_UID_BRIDGE 1107
+#define CK_UID_KEY    1108
 
 /* ---- SCHED_FIFO priorities ---- */
 #define CK_PRIO_SUP    41  /* restarts trusted processes; blocked in waitpid otherwise */
@@ -53,6 +58,7 @@
 #define CK_PRIO_PLANT  30
 #define CK_PRIO_BROKER 25
 #define CK_PRIO_AUDIT  20
+#define CK_PRIO_KEY    20
 #define CK_PRIO_MGMT   10
 #define CK_PRIO_BRIDGE 8
 
@@ -98,11 +104,14 @@ typedef struct {
 #define CK_MSG_CMD    (CK_MSG_BASE + 1)  /* mgmtd -> brokerd,  reply ck_decision_t */
 #define CK_MSG_GOV    (CK_MSG_BASE + 2)  /* brokerd -> governord, reply ck_decision_t */
 #define CK_MSG_AUDIT  (CK_MSG_BASE + 3)  /* trusted -> auditd, reply empty */
-#define CK_MSG_LAST   CK_MSG_AUDIT
+#define CK_MSG_KEYREQ (CK_MSG_BASE + 4)  /* brokerd -> keyconsole (ck_msg_cmd_t), reply uint64_t request id */
+#define CK_MSG_APPROVED (CK_MSG_BASE + 5) /* keyconsole -> governord, reply ck_decision_t */
+#define CK_MSG_LAST   CK_MSG_APPROVED
 
 typedef struct { uint16_t type; uint16_t subtype; } ck_msg_hdr_t;
 typedef struct { ck_msg_hdr_t hdr; uint32_t session; ck_cmd_t cmd; } ck_msg_cmd_t;
 typedef struct { ck_msg_hdr_t hdr; ck_jrec_t rec; } ck_msg_audit_t;
+typedef struct { ck_msg_hdr_t hdr; uint32_t pad; uint64_t approval_id; ck_cmd_t cmd; } ck_msg_approved_t;
 
 /* ---- helpers (ck_target.c) ---- */
 void ck_log(const char *proc, const char *fmt, ...) __attribute__((format(printf, 2, 3)));

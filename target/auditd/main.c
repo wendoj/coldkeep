@@ -6,7 +6,7 @@
  *   read            the last records as text (anyone), one per line:
  *                   "#<seq> t=<sim s> ..." (seq counts from 1 and never repeats)
  *   CK_MSG_AUDIT    append a record; accepted only from trusted uids
- *                   (governord, brokerd, casectl, plantsim, root). Anyone else,
+ *                   (governord, brokerd, casectl, plantsim, keyconsole, root). Anyone else,
  *                   including mgmtd, gets EACCES.
  *
  * The journal file (/data/coldkeep/audit.bin) is owned by auditd's uid, mode 0600.
@@ -41,7 +41,8 @@ static unsigned long g_ring_seq;
 static uint64_t g_rejected;
 
 static int trusted(int uid) {
-  return uid == 0 || uid == CK_UID_GOV || uid == CK_UID_BROKER || uid == CK_UID_CASE || uid == CK_UID_PLANT;
+  return uid == 0 || uid == CK_UID_GOV || uid == CK_UID_BROKER || uid == CK_UID_CASE || uid == CK_UID_PLANT ||
+         uid == CK_UID_KEY;
 }
 
 static void remember(const ck_jrec_t *r) {
