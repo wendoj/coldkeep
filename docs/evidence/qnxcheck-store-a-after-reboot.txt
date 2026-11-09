@@ -1,0 +1,20 @@
+
+================ system ================
+$ uname -a
+QNX store-a 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64
+(exit 0)
+$ id
+uid=0(root) gid=0(root) groups=0(root)
+(exit 0)
+$ date
+Mon Nov  9 19:38:39 UTC 2026
+(exit 0)
+
+================ Q5 persistence (after reboot) ================
+/data: marker SURVIVED reboot (written Mon Nov  9 19:38:01 UTC 2026)
+/data/home: marker SURVIVED reboot (written Mon Nov  9 19:38:01 UTC 2026)
+/data/var: marker SURVIVED reboot (written Mon Nov  9 19:38:01 UTC 2026)
+/var: marker SURVIVED reboot (written Mon Nov  9 19:38:01 UTC 2026)
+/tmp: marker SURVIVED reboot (written Mon Nov  9 19:38:01 UTC 2026)
+/home: marker missing
+/data/home/root: marker SURVIVED reboot (written Mon Nov  9 19:38:01 UTC 2026)

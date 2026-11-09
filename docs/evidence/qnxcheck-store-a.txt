@@ -1,0 +1,337 @@
+
+================ system ================
+$ uname -a
+QNX store-a 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64
+(exit 0)
+$ id
+uid=0(root) gid=0(root) groups=0(root)
+(exit 0)
+$ date
+Mon Nov  9 19:37:55 UTC 2026
+(exit 0)
+
+================ Q1/Q2 custom ability + client ability check ================
+[server] pid=753686 uid=0
+[server] procmgr_ability_create("coldkeep.check.write", 0) = 91 (errno=0 No error)
+[server] attached /dev/ckcheck; waiting for writes
+--- 1. client stays root (does root hold a custom ability by default?)
+[client] pid=765975 start uid=0 euid=0
+[client] open /dev/ckcheck O_WRONLY                                 rc=3 errno=0 (ok)
+[server] write from pid=765975 euid=0 ruid=0 -> able.flags=0x0
+[server] -> refusing with EPERM
+[client] write 1 byte                                               rc=-1 errno=1 (Operation not permitted)
+--- 2. client drops to uid 2000 WITHOUT keeping the ability (expect EPERM)
+[client] pid=774167 start uid=0 euid=0
+[client] procmgr_ability(deny+lock all, NONROOT)                    rc=0 errno=0 (ok)
+[client] setgid                                                     rc=0 errno=0 (ok)
+[client] setuid                                                     rc=0 errno=0 (ok)
+[client] now uid=2000 euid=2000
+[client] procmgr_ability(deny+lock all, ROOT) as non-root           rc=0 errno=0 (ok)
+[client] open /dev/ckcheck O_WRONLY                                 rc=3 errno=0 (ok)
+[server] write from pid=774167 euid=2000 ruid=2000 -> able.flags=0x0
+[server] -> refusing with EPERM
+[client] write 1 byte                                               rc=-1 errno=1 (Operation not permitted)
+--- 3. client drops to uid 2000 and KEEPS the ability (expect accepted)
+[client] pid=782359 start uid=0 euid=0
+[client] procmgr_ability_lookup("coldkeep.check.write") = 91 (errno=0)
+[client] procmgr_ability(keep custom, deny+lock rest, NONROOT)      rc=0 errno=0 (ok)
+[client] setgid                                                     rc=0 errno=0 (ok)
+[client] setuid                                                     rc=0 errno=0 (ok)
+[client] now uid=2000 euid=2000
+[client] procmgr_ability(deny+lock all, ROOT) as non-root           rc=0 errno=0 (ok)
+[client] open /dev/ckcheck O_WRONLY                                 rc=3 errno=0 (ok)
+[server] write from pid=782359 euid=2000 ruid=2000 -> able.flags=0x1
+[server] -> accepted
+[client] write 1 byte                                               rc=1 errno=0 (ok)
+--- 4. ordinary shell command as uid 2000 (expect EPERM)
+$ on -u 2000 sh -c echo x > /dev/ckcheck
+[server] write from pid=790551 euid=2000 ruid=2000 -> able.flags=0x0
+[server] -> refusing with EPERM
+(exit 1)
+--- 5. abilities of a dropped process, as pidin shows them
+[client] pid=802839 start uid=0 euid=0
+[client] procmgr_ability(deny+lock all, NONROOT)                    rc=0 errno=0 (ok)
+[client] setgid                                                     rc=0 errno=0 (ok)
+[client] setuid                                                     rc=0 errno=0 (ok)
+[client] now uid=2000 euid=2000
+[client] procmgr_ability(deny+lock all, ROOT) as non-root           rc=0 errno=0 (ok)
+[client] open /dev/ckcheck O_WRONLY                                 rc=3 errno=0 (ok)
+[server] write from pid=802839 euid=2000 ruid=2000 -> able.flags=0x0
+[server] -> refusing with EPERM
+[client] write 1 byte                                               rc=-1 errno=1 (Operation not permitted)
+[client] sleeping 4 s (pid 802839) - inspect with pidin now
+$ pidin -p 802839 abilities
+     pid name                         
+  802839 ./able_client                
+           spawn_setuid  R-L-
+           spawn_setgid  R-L-
+                 setuid  R-L-
+                 setgid  R-L-
+                  getid  R-L-
+              pathspace  R-L-
+                 reboot  R-L-
+                cpumode  R-L-
+               runstate  R-L-
+                confset  R-L-
+              rsrcdbmgr  R-L-
+                session  R-L-
+                  umask  R-L-
+                  event  R-L-
+                 rlimit  R-L-
+                mem_add  R-L-
+               mem_phys  R-L-
+            mem_special  R-L-
+             mem_global  R-L-
+               mem_peer  R-L-
+               mem_lock  R-L-
+                  spawn  R-L-
+                   fork  R-L-
+              prot_exec  R-L-
+                   wait  R-L-
+              msg_queue  R-L-
+               clockset  R-L-
+                 dumper  R-L-
+              interrupt  R-L-
+                     io  R-L-
+                  trace  R-L-
+               priority  R-L-
+             connection  R-L-
+               schedule  R-L-
+                 signal  R-L-
+                  timer  R-L-
+                   pgrp  R-L-
+              map_fixed  R-L-
+             path_trust  R-L-
+                   swap  R-L-
+            rconstraint  R-L-
+           child_newapp  R-L-
+         public_channel  R-L-
+               aps_root  R-L-
+            able_create  R-L-
+         runstate_burst  R-L-
+default_timer_tolerance  R-L-
+         xprocess_query  R-L-
+                 chroot  R-L-
+                  power  R-L-
+    prot_write_and_exec  R-L-
+                srandom  R-L-
+                    hyp  R-L-
+            rlimit_peer  R-L-
+        channel_connect  R-L-
+             mac_policy  R-L-
+              settypeid  R-L-
+              able_priv  R-L-
+          xprocess_able  R-L-
+         xprocess_debug  R-L-
+      xprocess_mem_read  R-L-
+  high_resolution_timer  R-L-
+         untrusted_exec  R-L-
+         server_monitor  R-L-
+           sigev_thread  R-L-
+                privreg  R-L-
+               mountifs  R-L-
+       container_create  R-L-
+      container_destroy  R-L-
+        container_query  R-L-
+         setcontainerid  R-L-
+           iofunc/chown  R-L-
+            iofunc/read  R-L-
+             iofunc/dup  R-L-
+            iofunc/exec  --L-
+          vfs/mount-blk  R-L-
+            vfs/pregrow  R-L-
+            vfs/relearn  R-L-
+        vfs/stats-clear  R-L-
+         vfs/fs-control  R-L-
+       network/privport  R-L-
+      network/rawsocket  R-L-
+      network/reuseport  R-L-
+          network/ipsec  R-L-
+          network/admin  R-L-
+       network/jailroot  R-L-
+   coldkeep.check.write  --L-
+                    eol  D-L-
+(exit 0)
+$ pidin -p 802839 -f a
+     pid 
+  802839 
+(exit 0)
+
+================ Q3 security policy ================
+$ which secpolpush
+(exit 1)
+$ which secpolgenerate
+(exit 1)
+$ which secpolcompile
+(exit 1)
+$ which secpol
+/system/bin/secpol
+(exit 0)
+$ ls /proc/boot
+ability
+build
+build.date
+cam-disk.so
+cat
+chmod
+dd
+devb-eide
+devc-ser8250
+echo
+fs-dos.so
+fs-qnx6.so
+fs-qtd.so
+fsevmgr
+getconf
+grep
+io-blk.so
+ksh
+ldqnx-64.so.2
+libc.so.6
+libcam.so.2
+libcrypto.so.3
+libfsnotify.so.1
+libgcc_s.so.1
+libjail.so.1
+libjson.so.1
+libm.so.3
+libpci.so.3.0
+libpci_hw_common.so
+libpci_hw_common.so.3.0
+libqcrypto.so.1.0
+libqh.so.1
+libregex.so.1
+libsecpol.so.1
+libslog2.so
+libslog2.so.1
+libslog2parse.so.1
+libslog2shim.so.1
+libsocket.so
+libsocket.so.4
+libz.so.2
+ln
+ls
+mount
+mount_fs.sh
+on
+pci-server
+pci_bkwd_compat.so
+pci_bkwd_compat.so.3.0
+pci_cap-0x01.so
+pci_cap-0x01.so.3.0
+pci_cap-0x05.so
+pci_cap-0x05.so.3.0
+pci_cap-0x10.so
+pci_cap-0x10.so.3.0
+pci_cap-0x11.so
+pci_cap-0x11.so.3.0
+pci_debug2.so
+pci_debug2.so.3.0
+pci_hw-Intel_x86.so
+pci_hw-Intel_x86.so.3.1
+pci_hw.cfg
+pci_server.cfg
+pci_slog2.so
+pci_slog2.so.3.0
+pci_strings.so
+pci_strings.so.3.0
+pidin
+procnto-smp-instr
+qcrypto-openssl-3.so
+qcrypto.conf
+qtd_public_key.pem
+rm
+rtc
+setconf
+setfacl
+sh
+sleep
+slog2info
+slogger2
+startup-script
+startup.sh
+toybox
+umount
+waitfor
+(exit 0)
+--- procnto command line (policy support is a procnto option)
+$ pidin -p 1 arg
+     pid Arguments
+       1 procnto-smp-instr -mr -d 0777 -u 0777 
+(exit 0)
+$ ls -l /dev/secpol
+ls: /dev/secpol: No such file or directory
+(exit 1)
+$ ls -l /proc/self/secpol
+ls: /proc/self/secpol: No such file or directory
+(exit 1)
+
+================ Q4 high availability manager ================
+$ which ham hamctrl
+(exit 1)
+no ham process running
+
+================ Q5 writable directories ================
+/data: WRITABLE (marker written; reboot and run 'persist-check')
+/data/home: WRITABLE (marker written; reboot and run 'persist-check')
+/data/var: WRITABLE (marker written; reboot and run 'persist-check')
+/var: WRITABLE (marker written; reboot and run 'persist-check')
+/tmp: WRITABLE (marker written; reboot and run 'persist-check')
+/home: not writable or missing
+/data/home/root: WRITABLE (marker written; reboot and run 'persist-check')
+$ df -h
+ifs                          10M       10M         0     100%  /               
+/dev/hd0t179                 61M      3.0M       58M       5%  /data/          
+/dev/hd0t178                 76M       57M       19M      75%  /system/        
+/dev/hd0t177                 10M       10M       36K     100%  /boot/          
+/dev/hd0                    148M      148M         0     100%                  
+/dev/shmem                     0         0         0     100%  (/dev/shmem)    
+(exit 0)
+
+================ Q7 adaptive partitioning ================
+$ which aps
+(exit 1)
+$ aps show
+run-checks.sh[79]: aps: cannot execute - No such file or directory
+(exit 126)
+
+================ networking and services ================
+$ ifconfig
+enc0: flags=0<> metric 0 mtu 1536
+	options=0<>
+	groups: enc
+	nd6 options=21<PERFORMNUD,AUTO_LINKLOCAL>
+lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> metric 0 mtu 16384
+	options=680003<RXCSUM,TXCSUM,LINKSTATE,RXCSUM_IPV6,TXCSUM_IPV6>
+	inet 127.0.0.1 netmask 0xff000000
+	inet6 ::1 prefixlen 128
+	inet6 fe80::1%lo0 prefixlen 64 scopeid 0x2
+	groups: lo
+	nd6 options=21<PERFORMNUD,AUTO_LINKLOCAL>
+pflog0: flags=0<> metric 0 mtu 33152
+	options=0<>
+	groups: pflog
+pfsync0: flags=0<> metric 0 mtu 1500
+	options=0<>
+	groups: pfsync
+vtnet0: flags=8843<UP,BROADCAST,RUNNING,SIMPLEX,MULTICAST> metric 0 mtu 1500
+	options=80028<VLAN_MTU,JUMBO_MTU,LINKSTATE>
+	ether 52:54:00:68:db:e2
+	inet6 fe80::5054:ff:fe68:dbe2%vtnet0 prefixlen 64 scopeid 0x5
+	inet6 fec0::4f84:69bf:e64e:3b87 prefixlen 64 autoconf
+	inet 10.0.2.15 netmask 0xffffff00 broadcast 10.0.2.255
+	media: Ethernet autoselect (10Gbase-T <full-duplex>)
+	status: active
+	nd6 options=1<PERFORMNUD>
+(exit 0)
+$ which sshd qconn
+/system/bin/sshd
+/system/bin/qconn
+(exit 0)
+  237582   1 system/bin/qconn              10r SIGWAITINFO                                
+  237582   2 system/bin/qconn              10r RECEIVE        1                           
+  286739   1 system/bin/sshd               10r SIGWAITINFO                                
+  700418   1 system/bin/sshd-session       10r SIGWAITINFO                                
+  712720   1 system/bin/sshd-session       10r REPLY          147469                      
+
+done
