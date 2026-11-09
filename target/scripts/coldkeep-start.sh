@@ -17,7 +17,7 @@ DATA=/data/coldkeep
 LOG=$DATA/log
 
 slay -f sup >/dev/null 2>&1
-slay -f bridge mgmtd brokerd governord casectl auditd plantsim >/dev/null 2>&1
+slay -f bridge mgmtd brokerd governord keyconsole casectl auditd plantsim >/dev/null 2>&1
 sleep 1
 [ "$MODE" = stop ] && { echo "stopped"; exit 0; }
 case "$MODE" in legacy|protected) ;; *) echo "mode must be legacy or protected"; exit 2 ;; esac
@@ -47,6 +47,7 @@ if [ "$MODE" = protected ]; then
     i=$((i + 1))
   done
   "$BIN/sup" -l "$LOG" "$@" \
+    -c "keyconsole /dev/coldkeep/keyq $BIN/keyconsole" \
     -c "governord /dev/coldkeep/gov $BIN/governord" \
     -c "brokerd /dev/coldkeep/broker $BIN/brokerd" \
     -c "mgmtd - $BIN/mgmtd" > "$LOG/sup.log" 2>&1 &
