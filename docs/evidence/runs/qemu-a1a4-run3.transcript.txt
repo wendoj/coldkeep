@@ -1,0 +1,32 @@
+restarting both stores (seed 7, speed 30x)...
+
+[A1 disable_alarms 0] legacy: APPLIED | coldkeep: NEEDS_KEY (G5 dangerous: queued as key request #1)
+[A1 set_setpoint 1] legacy: APPLIED | coldkeep: DENY (G1 setpoint 28.0 far outside band 0.0..5.0)
+[A1 set_setpoint 2] legacy: APPLIED | coldkeep: DENY (G1 setpoint 28.0 far outside band 0.0..5.0)
+[A1 set_setpoint 3] legacy: APPLIED | coldkeep: DENY (G1 setpoint 28.0 far outside band 0.0..5.0)
+[A1 set_setpoint 4] legacy: APPLIED | coldkeep: DENY (G1 setpoint 28.0 far outside band 0.0..5.0)
+[A1 set_setpoint 5] legacy: APPLIED | coldkeep: DENY (G1 setpoint 3.0 far outside band -25.0..-20.0)
+[A1 set_setpoint 6] legacy: APPLIED | coldkeep: DENY (G1 setpoint 3.0 far outside band -25.0..-20.0)
+[A1 set_setpoint 7] legacy: APPLIED | coldkeep: DENY (G1 setpoint 27.0 far outside band 0.0..3.0)
+[A1 set_setpoint 8] legacy: APPLIED | coldkeep: DENY (G1 setpoint 27.0 far outside band 0.0..3.0)
+[A1 start_defrost 1] legacy: APPLIED | coldkeep: CLAMP (G3 max defrost 45 min)
+[A1 start_defrost 2] legacy: APPLIED | coldkeep: CLAMP (G3 max defrost 45 min)
+[A1 start_defrost 3] legacy: APPLIED | coldkeep: DENY (G3 max 2 cases defrosting at once)
+[A1 start_defrost 4] legacy: APPLIED | coldkeep: DENY (G3 max 2 cases defrosting at once)
+[A1 start_defrost 5] legacy: APPLIED | coldkeep: DENY (G3 max 2 cases defrosting at once)
+[A1 start_defrost 6] legacy: APPLIED | coldkeep: DENY (G3 max 2 cases defrosting at once)
+[A1 start_defrost 7] legacy: APPLIED | coldkeep: DENY (G3 max 2 cases defrosting at once)
+[A1 start_defrost 8] legacy: APPLIED | coldkeep: CLAMP (G3 max defrost 45 min)
+[A2 flood] legacy: 12160 requests in 15 s wall from ckflood on the target, 11119 answered | coldkeep: 12128 requests in 15 s wall from ckflood on the target, 11080 answered
+[A3 connect governor channel] legacy: n/a (does not exist in this architecture) | coldkeep: cat: /dev/coldkeep/gov: Permission denied
+[A3 open audit journal for writing] legacy: SUCCEEDED | coldkeep: sh: cannot create /data/coldkeep/audit.bin: Permission denied
+[A3 read governor state] legacy: n/a (does not exist in this architecture) | coldkeep: cat: /data/coldkeep/gov/state: Permission denied
+[A3 write case controller] legacy: SUCCEEDED | coldkeep: dd: /dev/coldkeep/case/1: write error: Operation not permitted
+[A4 freeze governord 5 s] legacy: n/a (no governor in the flat architecture) | coldkeep: 8 cases entered G6 hold (first ~2.17 s wall after the freeze), 8 released after resume; held ~3.27 s
+[A4 kill governord] legacy: n/a (no governor in the flat architecture) | coldkeep: restarted by sup, ready in 29.3 ms
+[A4 start_defrost after restart 1] legacy: n/a | coldkeep: DENY (G3 min 4 h between manual defrosts)
+
+Summary (qemu-a1a4-run3; QNX 8.0 in QEMU; recordings in recordings/)
+  store       min>limit           peak product  A1 applied  A1 blocked  A3 succeeded  food at risk
+  legacy           75.3      14.0 C (case  1)          17           0        2/2       2200 kg
+  coldkeep          0.0       2.1 C (case  8)           3          14        0/4          0 kg
