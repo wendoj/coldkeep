@@ -1,0 +1,22 @@
+{
+  "name": "coldkeep-host",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": ["shared", "relay", "attack", "dashboard"],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "relay": "npm run start -w @coldkeep/relay --",
+    "attack": "npm run start -w @coldkeep/attack --",
+    "dev": "npm run dev -w @coldkeep/dashboard",
+    "build": "npm run build -w @coldkeep/dashboard",
+    "e2e": "npm run e2e -w @coldkeep/dashboard"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  }
+}
