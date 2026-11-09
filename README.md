@@ -12,23 +12,25 @@ COLDKEEP is built the other way round. The network-facing management process (`m
 
 ## Results
 
-Same attack, two stores, recorded on **QNX 8.0 running in QEMU**: 5 runs, seed 7, 3600 sim-s. The attacker logs in with `admin/admin` at t = 600 s and sends 17 commands:
+Same attacks, two stores, recorded on **QNX 8.0 running in QEMU**: 5 runs, seed 7, 3600 sim-s.
 
-- every case: start a 24-hour defrost;
-- every case: raise the setpoint by 25 °C;
-- disable alarms.
-
-At t = 2100 s the same privileged actions are tried from a shell with `mgmtd`'s uid.
+- **A1:** the attacker logs in with `admin/admin` and sends 17 commands: a 24-hour defrost on every case, every setpoint raised by 25 °C, and alarms off.
+- **A2:** `mgmtd` is flooded from the target.
+- **A3:** the attacker tries privileged actions from a shell with `mgmtd`'s uid.
+- **A4:** the governor is killed, then frozen.
 
 | | Legacy (flat) | COLDKEEP |
 |---|---|---|
-| Case-minutes with product above limit | 76.1 (75.9–76.3) | **0.0** |
+| Case-minutes with product above limit | 75.6 (75.3–76.0) | **0.0** |
 | Peak chilled product temperature (limit 8 °C) | 14.0 °C | **3.2 °C** |
 | Attacker commands applied / blocked | 17 / 0 | **3 / 14** (3 defrosts clamped to 45 min) |
 | Privileged actions that succeeded | 2 / 2 | **0 / 4** (`EPERM` / `EACCES` from QNX) |
 | Illustrative food at risk | 2200 kg | **0 kg** |
+| Loop ticks with jitter ≥ 5 ms, quiet → flood | 0.55 % → 0.41 % | 0.73 % → **0.36 %** |
+| Governor restart after `kill -9` | n/a | **29.6 ms** (28.5–32.7) |
+| Cases in G6 safe hold while the governor was frozen 5 s | n/a | **8 of 8**, about 2.2 s after the freeze |
 
-Full table, per-rule breakdown, exact QNX error messages and the raw recordings: [docs/RESULTS.md](docs/RESULTS.md). A2 (request flood vs loop jitter) and A4 (governor restart) are not measured yet. The host simulator gives similar results, but those numbers are labelled separately and are not QNX measurements.
+The flood result comes from QNX priorities, which both stores use; it is not a difference between the architectures. Absolute jitter under emulation reflects the emulator. Full tables, the exact QNX error messages and the raw recordings are in [docs/RESULTS.md](docs/RESULTS.md). The host simulator gives similar results, but those numbers are labelled separately and are not QNX measurements.
 
 ## Run it
 
@@ -95,7 +97,9 @@ Environment: QNX SDP 8.0, x86_64 image built with `mkqnximage`, QEMU (emulated, 
 | Real-time priorities (`SCHED_FIFO`) | every `target/*/main.c`; layout in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Timers delivering pulses (control loops, heartbeats) | [`target/casectl/main.c`](target/casectl/main.c), [`target/governord/main.c`](target/governord/main.c) |
 | Shared memory between processes | [`target/plantsim/main.c`](target/plantsim/main.c) |
-| Security policy | supported by the SDK; needs a policy file ([QNX_FEATURES.md](docs/QNX_FEATURES.md), question 3) |
+| Second custom ability (`coldkeep.envelope.write`) checked on each message (`ConnectClientInfoAble`) | [`target/keyconsole/main.c`](target/keyconsole/main.c), [`target/governord/main.c`](target/governord/main.c) |
+| Restart and fail-safe (`posix_spawn`/`waitpid` supervisor; HAM is not in the image) | [`target/sup/main.c`](target/sup/main.c), G6 in [`core/control.c`](core/control.c) |
+| Security policy | supported by the SDK; needs a policy file ([QNX_FEATURES.md](docs/QNX_FEATURES.md), question 3). Not used: the fallback is abilities + uid + file permissions |
 
 ## Layout
 
@@ -104,6 +108,7 @@ core/        portable C11: thermal, plant, control (casectl + G6), governor (G1-
              broker, journal, metrics, protocol, prng, store (host wiring)
 sim-host/    ck-sim: host simulator, legacy and protected in lockstep
 target/      QNX processes: plantsim casectl governord brokerd mgmtd auditd bridge
+             keyconsole sup, and ckflood (A2 load generator)
 host/        relay (bridge/replay -> websocket, recorder), attack runner, dashboard
 scripts/     QEMU image/run, cross-build, deploy, comparison runs
 scenarios/   host simulator scenarios        tests/golden/  host golden outputs
