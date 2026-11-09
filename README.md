@@ -60,6 +60,24 @@ scripts/run-compare.py --label myrun                    # A1 + A3 on both, recor
 scripts/summarize-runs.py recordings/myrun
 ```
 
+### Dashboard
+
+Needs Node 20+.
+
+```sh
+cd host && npm ci
+# replay a recorded QEMU run (no QNX needed)
+npm run relay -- --replay ../docs/evidence/runs/qemu-run1.legacy.jsonl \
+                 --replay ../docs/evidence/runs/qemu-run1.protected.jsonl
+npm run build && npm run start -w @coldkeep/dashboard   # http://127.0.0.1:3000
+
+# or live from the two QEMU stores, recording until sim t=3600
+npm run relay -- --store legacy=127.0.0.1:17071 --store protected=127.0.0.1:17070 --record live1 --end 3600
+npm run attack -- --store legacy=127.0.0.1:18081 --store protected=127.0.0.1:18080 --a1-at 600
+```
+
+The compare view takes its figures from the run's own `summary` line. While a live run is still going, they are computed from the samples received so far, and the page says which source it is using. `make host-test` runs the schema, relay and attack-runner tests. CI also builds the dashboard and runs a Playwright smoke test in replay mode.
+
 Everything the QNX features rely on was first checked on the target: [docs/QNX_FEATURES.md](docs/QNX_FEATURES.md).
 
 Environment: QNX SDP 8.0, x86_64 image built with `mkqnximage`, QEMU (emulated, `-cpu max`) on macOS, `qcc -Vgcc_ntox86_64`. CI (GitHub Actions, Ubuntu + macOS) runs every host test; it cannot build the QNX target, which needs the licensed SDK.
@@ -85,7 +103,8 @@ Environment: QNX SDP 8.0, x86_64 image built with `mkqnximage`, QEMU (emulated, 
 core/        portable C11: thermal, plant, control (casectl + G6), governor (G1-G5),
              broker, journal, metrics, protocol, prng, store (host wiring)
 sim-host/    ck-sim: host simulator, legacy and protected in lockstep
-target/      QNX processes: plantsim casectl governord brokerd mgmtd auditd
+target/      QNX processes: plantsim casectl governord brokerd mgmtd auditd bridge
+host/        relay (bridge/replay -> websocket, recorder), attack runner, dashboard
 scripts/     QEMU image/run, cross-build, deploy, comparison runs
 scenarios/   host simulator scenarios        tests/golden/  host golden outputs
 docs/        ARCHITECTURE RULES PLANT_MODEL THREAT_MODEL QNX_FEATURES RESULTS
