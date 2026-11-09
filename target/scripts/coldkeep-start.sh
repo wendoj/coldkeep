@@ -39,7 +39,7 @@ sleep 1
 if [ "$MODE" = protected ]; then
   # sup starts (and restarts) the trusted processes in order, each once the
   # previous one's resource manager is attached
-  rm -f "$LOG"/casectl.*.log "$LOG"/governord.log "$LOG"/brokerd.log
+  rm -f "$LOG"/casectl.*.log "$LOG"/governord.log "$LOG"/brokerd.log "$LOG"/mgmtd.log
   set --
   i=1
   while [ $i -le $N ]; do
@@ -48,10 +48,8 @@ if [ "$MODE" = protected ]; then
   done
   "$BIN/sup" -l "$LOG" "$@" \
     -c "governord /dev/coldkeep/gov $BIN/governord" \
-    -c "brokerd /dev/coldkeep/broker $BIN/brokerd" > "$LOG/sup.log" 2>&1 &
-  i=0
-  while [ ! -e /dev/coldkeep/broker ] && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done
-  "$BIN/mgmtd" > "$LOG/mgmtd.log" 2>&1 &
+    -c "brokerd /dev/coldkeep/broker $BIN/brokerd" \
+    -c "mgmtd - $BIN/mgmtd" > "$LOG/sup.log" 2>&1 &
   "$BIN/bridge" > "$LOG/bridge.log" 2>&1 &
 else
   i=1
