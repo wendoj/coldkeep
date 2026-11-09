@@ -3,7 +3,8 @@
  * auditd — append-only audit journal (core/journal.c) and compliance log.
  *
  * /dev/coldkeep/audit
- *   read            the last records as text (anyone)
+ *   read            the last records as text (anyone), one per line:
+ *                   "#<seq> t=<sim s> ..." (seq counts from 1 and never repeats)
  *   CK_MSG_AUDIT    append a record; accepted only from trusted uids
  *                   (governord, brokerd, casectl, plantsim, root). Anyone else,
  *                   including mgmtd, gets EACCES.
@@ -36,6 +37,7 @@ static ck_plant_shm_t *g_ps;
 static uint64_t g_next_compliance;
 static char g_ring[RING][200];
 static unsigned g_ring_head, g_ring_n;
+static unsigned long g_ring_seq;
 static uint64_t g_rejected;
 
 static int trusted(int uid) {
@@ -47,11 +49,11 @@ static void remember(const ck_jrec_t *r) {
   const double t = (double)r->t_ns / 1e9;
   if (r->kind == JREC_DECISION) {
     const ck_decision_t *d = &r->d;
-    snprintf(line, sizeof g_ring[0], "t=%.0f %s/%s %s case=%u value=%.1f -> %s %s %s", t,
+    snprintf(line, sizeof g_ring[0], "#%lu t=%.0f %s/%s %s case=%u value=%.1f -> %s %s %s", ++g_ring_seq, t,
              d->cmd.origin, d->cmd.user, ck_cmd_type_name(d->cmd.type), d->cmd.case_id,
              (double)d->cmd.value, ck_verdict_name(d->verdict), ck_rule_name(d->rule_id), d->reason);
   } else {
-    snprintf(line, sizeof g_ring[0], "t=%.0f %s %s", t,
+    snprintf(line, sizeof g_ring[0], "#%lu t=%.0f %s %s", ++g_ring_seq, t,
              r->kind == JREC_COMPLIANCE ? "compliance" : "event", r->text);
   }
   g_ring_head = (g_ring_head + 1) % RING;
