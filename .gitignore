@@ -45,3 +45,6 @@ test-results/
 .vscode/
 .idea/
 *.swp
+target/qnxcheck/able_server
+target/qnxcheck/able_client
+target/qnxcheck/results*.txt
