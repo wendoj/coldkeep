@@ -86,6 +86,30 @@ static void g6_hold_when_governor_lost(void) {
   CHECK_EQ_INT(ck_ctl_command(&c, &d, t), 0);
 }
 
+static void hb_timeout_is_configurable(void) {
+  /* target: 2 s of wall time at 30x speed is 60 s of sim time */
+  ck_ctl_t c; ck_case_state_t s = {0};
+  ck_ctl_init(&c, 1, CASE_CHILLED, true, 0);
+  c.hb_timeout_ns = CK_S(60);
+  uint64_t t = 0;
+  for (; t <= CK_S(59); t += CK_TICK_NS) tick(&c, &s, t, 4, 0);
+  CHECK(!c.hold);
+  for (; t <= CK_S(61); t += CK_TICK_NS) tick(&c, &s, t, 4, 0);
+  CHECK(c.hold);
+}
+
+static void legacy_mapping(void) {
+  ck_cmd_t cmd = {0};
+  ck_case_cmd_t cc;
+  cmd.type = CMD_START_DEFROST; cmd.value = 86400;
+  CHECK(ck_ctl_legacy_map(&cmd, &cc));
+  CHECK(cc.type == CASE_CMD_START_DEFROST && cc.duration_s == 86400 && cc.term_c == CK_TERM_NONE);
+  cmd.type = CMD_RAW_WRITE; cmd.value = 1;
+  CHECK(ck_ctl_legacy_map(&cmd, &cc) && cc.raw_override && cc.raw_heater && !cc.raw_compressor);
+  cmd.type = CMD_DISABLE_ALARMS;
+  CHECK(!ck_ctl_legacy_map(&cmd, &cc));
+}
+
 static void legacy_has_no_hold(void) {
   ck_ctl_t c; ck_case_state_t s = {0};
   ck_ctl_init(&c, 1, CASE_CHILLED, false, 0);
@@ -108,6 +132,8 @@ void suite_control(void) {
   RUN(termination_ends_heat);
   RUN(stop_defrost);
   RUN(g6_hold_when_governor_lost);
+  RUN(hb_timeout_is_configurable);
+  RUN(legacy_mapping);
   RUN(legacy_has_no_hold);
   RUN(raw_override);
 }
