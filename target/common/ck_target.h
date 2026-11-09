@@ -47,6 +47,7 @@
 #define CK_UID_BRIDGE 1107
 
 /* ---- SCHED_FIFO priorities ---- */
+#define CK_PRIO_SUP    41  /* restarts trusted processes; blocked in waitpid otherwise */
 #define CK_PRIO_CASE   40
 #define CK_PRIO_GOV    35
 #define CK_PRIO_PLANT  30
