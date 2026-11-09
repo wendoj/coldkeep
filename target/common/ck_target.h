@@ -44,6 +44,7 @@
 #define CK_UID_BROKER 1104
 #define CK_UID_MGMT   1105
 #define CK_UID_AUDIT  1106
+#define CK_UID_BRIDGE 1107
 
 /* ---- SCHED_FIFO priorities ---- */
 #define CK_PRIO_CASE   40
@@ -52,6 +53,7 @@
 #define CK_PRIO_BROKER 25
 #define CK_PRIO_AUDIT  20
 #define CK_PRIO_MGMT   10
+#define CK_PRIO_BRIDGE 8
 
 /* ---- shared memory: plantsim -> everyone (read-only) ---- */
 #define CK_SHM_MAGIC 0x434B504Cu /* "CKPL" */
