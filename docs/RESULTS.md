@@ -2,31 +2,38 @@
 
 **Only numbers from this file may appear in the README, UI copy or video**.
 
-## QNX target runs
+## QNX target runs (A1–A4)
 
-Five comparison runs, recorded with `scripts/run-compare.py --label qemu-runN` and summarised with `scripts/summarize-runs.py recordings/qemu-run`. Both stores run at the same time, each on its own QEMU instance:
+Five comparison runs, recorded with `scripts/run-compare.py --label qemu-a1a4-runN` and summarised with `scripts/summarize-runs.py docs/evidence/runs/qemu-a1a4-run` (output: [qemu-a1a4-summary.md](evidence/runs/qemu-a1a4-summary.md)). Both stores run at the same time, each on its own QEMU instance:
 
 - the legacy store on slot 1;
 - the protected store on slot 0.
 
 Run settings:
 
-- **Platform:** QNX 8.0 x86_64, emulated (`-cpu max`, no hardware acceleration) on an Apple Silicon Mac.
+- **Platform:** QNX 8.0 x86_64, emulated (`-cpu max`, 2 vCPUs, no hardware acceleration) on an Apple Silicon Mac.
 - **Scenario:** seed 7, speed 30×, 3600 sim-s.
-- **A1:** at t = 600 s.
-- **A3:** at t = 2100 s, as shell commands run with `mgmtd`'s uid.
-- **Commit:** 3ed5de1.
+- **Campaigns** (sim times):
+  - A1 at t = 600 s;
+  - A2 from t = 1150 s (15 s wall quiet, then 15 s wall flood);
+  - A3 at t = 2100 s;
+  - A4 at t = 2700 s.
+- **Commit:** c7b425c.
 
 Values are mean (min–max) over the 5 runs. The raw files are in [evidence/runs/](evidence/runs/).
 
+### A1 (credentialed takeover) and A3 (compromised web process)
+
 | Metric | Legacy | COLDKEEP |
 |---|---|---|
-| Case-minutes with product above limit (8 cases) | 76.1 (75.9–76.3) | 0.0 |
+| Case-minutes with product above limit (8 cases) | 75.6 (75.3–76.0) | 0.0 |
 | Peak chilled product temperature, °C (limit 8) | 14.0 | 3.2 |
 | A1 commands applied (of 17) | 17 | 3 |
 | A1 commands blocked (of 17) | 0 | 14 |
 | Illustrative food at risk, kg | 2200 | 0 |
 | A3 privileged actions that succeeded (of those that apply) | 2/2 | 0/4 |
+
+An earlier set of five A1 + A3 runs (commit 3ed5de1, files `qemu-runN.*`) gave the same verdicts and 76.1 (75.9–76.3) case-minutes for the legacy store.
 
 **What COLDKEEP did with the 17 A1 commands (the same in every run):**
 
@@ -49,10 +56,40 @@ On the legacy store, `mgmtd` runs as root:
 - The controller write and the journal write both succeeded.
 - The governor channel and the governor state do not exist in that architecture, so those two attempts are `n/a`.
 
-**Not measured yet:**
+### A2: request flood vs control-loop jitter
 
-- **A2, loop jitter under a request flood.** The runs recorded the worst `casectl` loop jitter, but only without a flood: 13.9–89.3 ms on the legacy store and 13.2–143.3 ms on the protected store. Under full emulation these values reflect the emulator, not QNX scheduling, so they are not a real-time result.
-- **A4, governor restart.** TBD (pending QEMU run).
+How the measurement works:
+
+- Each `casectl` keeps a cumulative histogram of its loop jitter. The runner reads all 8 histograms three times: before a 15 s quiet window, between it and a 15 s flood window, and after the flood.
+- The flood comes from `ckflood` on the target. It uses 4 loopback connections, runs as `mgmtd`'s uid at the default priority, and sends pipelined `status` requests. It runs on the target because in trial runs (not recorded) QEMU's user-mode network limited a flood from the host to a few hundred requests/s, which did not load the guest.
+- `mgmtd` answered every request it could. It was the bottleneck at about 720 replies/s.
+
+| Metric | Legacy | COLDKEEP |
+|---|---|---|
+| Flood requests answered by `mgmtd` in 15 s | 10846 (10171–11167) | 10749 (10042–11080) |
+| Loop ticks measured, quiet / flood | 37479 / 40363 | 37421 / 40553 |
+| Ticks with jitter ≥ 5 ms, %, quiet | 0.55 (0.06–1.08) | 0.73 (0.40–1.36) |
+| Ticks with jitter ≥ 5 ms, %, flood | 0.41 (0.06–0.70) | 0.36 (0.13–0.66) |
+| Ticks with jitter ≥ 20 ms, %, quiet | 0.00 (0.00–0.01) | 0.00 |
+| Ticks with jitter ≥ 20 ms, %, flood | 0.01 (0.00–0.06) | 0.00 (0.00–0.02) |
+
+The flood did not increase control-loop jitter in either store. `casectl` runs at priority 40 and `mgmtd` at 10, and the legacy store uses the same priorities. So this result shows QNX priority scheduling protecting the loop. It does not show a difference between the two architectures.
+
+The share of ticks with jitter ≥ 1 ms (39–87 % in both windows, both stores) is high and varies from run to run. The likely reason is the emulated timer: the controller period is 3.33 ms at 30× and the system tick is 1 ms. Treat absolute jitter here as a property of the emulator, not of QNX on real hardware.
+
+### A4: governor crash and hang (protected store; the legacy store has no governor)
+
+`sup` (target/sup) runs `casectl` ×8, `keyconsole`, `governord`, `brokerd` and `mgmtd`. It restarts any of them that dies, and it measures the time until the restarted process's resource manager is attached. QNX's High Availability Manager is not in the image ([QNX_FEATURES.md](QNX_FEATURES.md)).
+
+| Metric | COLDKEEP |
+|---|---|
+| `governord` restart after `kill -9`, until its resource manager is ready, ms | 29.6 (28.5–32.7) |
+| Renewed 24 h defrost on case 1 right after the restart | DENY, G3 min 4 h between manual defrosts (state restored from disk) in every run |
+| Cases that entered G6 hold while `governord` was frozen (SIGSTOP) for 5 s, of 8 | 8 |
+| First hold after the freeze, s wall (heartbeat timeout 2 s) | 2.18 (2.16–2.20) |
+| Cases released after the governor resumed, of 8 | 8 |
+
+During the freeze the controllers kept their last-known-good configuration and refused to start a defrost (G6). In all five runs no case went above its limit.
 
 ## Host simulator runs (labelled; not QNX measurements)
 
