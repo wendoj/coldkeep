@@ -18,6 +18,7 @@
 #include <math.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -184,6 +185,8 @@ int main(int argc, char **argv) {
     else { fprintf(stderr, "usage: mgmtd [-L] [-p port]\n"); return 2; }
   }
   for (int i = 0; i < MAX_CLIENTS; i++) g_cl[i].fd = -1;
+  /* a client that hangs up with replies pending must not kill the API */
+  signal(SIGPIPE, SIG_IGN);
 
   /* everything that needs privileges happens before the drop */
   const int ls = socket(AF_INET, SOCK_STREAM, 0);
