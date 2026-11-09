@@ -16,6 +16,7 @@ BIN=/data/coldkeep/bin
 DATA=/data/coldkeep
 LOG=$DATA/log
 
+slay -f sup >/dev/null 2>&1
 slay -f bridge mgmtd brokerd governord casectl auditd plantsim >/dev/null 2>&1
 sleep 1
 [ "$MODE" = stop ] && { echo "stopped"; exit 0; }
@@ -35,24 +36,30 @@ IFS=$OLDIFS
 "$BIN/plantsim" -s "$SEED" -x "$SPEED" -c "$CASES" > "$LOG/plantsim.log" 2>&1 &
 sleep 1
 "$BIN/auditd" > "$LOG/auditd.log" 2>&1 &
-i=1
-while [ $i -le $N ]; do
-  if [ "$MODE" = legacy ]; then
-    "$BIN/casectl" -n $i -L > "$LOG/casectl.$i.log" 2>&1 &
-  else
-    "$BIN/casectl" -n $i > "$LOG/casectl.$i.log" 2>&1 &
-  fi
-  i=$((i + 1))
-done
-sleep 1
 if [ "$MODE" = protected ]; then
-  "$BIN/governord" > "$LOG/governord.log" 2>&1 &
-  sleep 1
-  "$BIN/brokerd" > "$LOG/brokerd.log" 2>&1 &
-  sleep 1
+  # sup starts (and restarts) the trusted processes in order, each once the
+  # previous one's resource manager is attached
+  rm -f "$LOG"/casectl.*.log "$LOG"/governord.log "$LOG"/brokerd.log
+  set --
+  i=1
+  while [ $i -le $N ]; do
+    set -- "$@" -c "casectl.$i /dev/coldkeep/case/$i $BIN/casectl -n $i"
+    i=$((i + 1))
+  done
+  "$BIN/sup" -l "$LOG" "$@" \
+    -c "governord /dev/coldkeep/gov $BIN/governord" \
+    -c "brokerd /dev/coldkeep/broker $BIN/brokerd" > "$LOG/sup.log" 2>&1 &
+  i=0
+  while [ ! -e /dev/coldkeep/broker ] && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done
   "$BIN/mgmtd" > "$LOG/mgmtd.log" 2>&1 &
   "$BIN/bridge" > "$LOG/bridge.log" 2>&1 &
 else
+  i=1
+  while [ $i -le $N ]; do
+    "$BIN/casectl" -n $i -L > "$LOG/casectl.$i.log" 2>&1 &
+    i=$((i + 1))
+  done
+  sleep 1
   "$BIN/mgmtd" -L > "$LOG/mgmtd.log" 2>&1 &
   "$BIN/bridge" -L > "$LOG/bridge.log" 2>&1 &
 fi
