@@ -8,14 +8,14 @@
 - **Audit integrity:** every decision is recorded, and the trusted zone controls the journal.
 
 ## Trust boundary
-`mgmtd` (the network-facing API) is **assumed compromised**. Everything it sends is untrusted, including the claimed `user`. The trusted zone is `brokerd`, `governord`, `casectl`, `plantsim`, `auditd` and `keyconsole`. On QNX this boundary is enforced by abilities, uid and (if available) security policy.
+`mgmtd` (the network-facing API) is **assumed compromised**. Everything it sends is untrusted, including the claimed `user`. The trusted zone is `brokerd`, `governord`, `casectl`, `plantsim`, `auditd` and `keyconsole`. On QNX this boundary is enforced by abilities, uid and file ownership. A QNX security policy is not used yet, because it needs a policy file ([QNX_FEATURES.md](QNX_FEATURES.md), question 3).
 
 ## Attacker capabilities (A1–A4)
 | ID | Capability | Defence |
 |---|---|---|
 | A1 | Valid admin credentials (the default `admin/admin`, deliberately) and the full documented API | Broker classification + governor G1–G5 |
 | A2 | Unlimited request rate | Per-session rate limit; real-time priorities on QNX (to be measured) |
-| A3 | Code execution inside `mgmtd` (simulated switch, no real exploit) | Kernel-enforced: abilities dropped and locked, custom ability `coldkeep.plant.write`, security policy. *(In sim-host this is a model; on the target it is QNX.)* |
+| A3 | Code execution inside `mgmtd` (simulated switch, no real exploit) | Kernel-enforced: abilities dropped and locked, custom ability `coldkeep.plant.write`, uid and file ownership on every channel. On the target, 0 of the 4 attempts succeeded in all 5 recorded runs ([RESULTS.md](RESULTS.md)). *(In sim-host this is a model.)* |
 | A4 | Crash of `governord` | Supervisor restart; G6 hold in `casectl` |
 
 ## Not defended (by design)
