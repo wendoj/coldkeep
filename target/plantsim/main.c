@@ -129,14 +129,25 @@ int main(int argc, char **argv) {
   ck_log(PROC, "running: %d cases, seed %llu, speed %.0fx, uid %d", n, (unsigned long long)seed,
          (double)speed, (int)getuid());
 
-  const uint64_t start = ck_wall_ns();
   const uint64_t dt = ck_plant_dt_ns(&pl);
+  /* at most ~2 ticks' worth of steps per 10 ms pulse: if the CPU cannot keep up,
+   * sim time falls behind (and we say so) rather than starving lower priorities */
+  const int max_steps = 2 * (int)(speed / 10.0f + 1.0f);
+  uint64_t start = ck_wall_ns(), last_report = start, lag_ns = 0;
   for (;;) {
     struct _pulse pulse;
     if (MsgReceivePulse(chid, &pulse, sizeof pulse, NULL) == -1) continue;
     if (pulse.code != PULSE_TICK) continue;
-    const uint64_t target = (uint64_t)((double)(ck_wall_ns() - start) * (double)speed);
-    for (int steps = 0; sim_ns + dt <= target && steps < 1000; steps++) {
+    const uint64_t wall = ck_wall_ns();
+    const uint64_t target = (uint64_t)((double)(wall - start) * (double)speed) - lag_ns;
+    if (target > sim_ns + (uint64_t)max_steps * dt * 5) { /* far behind: drop the backlog */
+      lag_ns += target - sim_ns;
+    }
+    if (wall - last_report >= 10 * CK_NS_PER_S) {
+      if (lag_ns) ck_log(PROC, "running behind real speed: sim lags by %.1f s", (double)lag_ns / 1e9);
+      last_report = wall;
+    }
+    for (int steps = 0; sim_ns + dt <= target && steps < max_steps; steps++) {
       for (int i = 0; i < n; i++) {
         const ck_act_slot_t *a = &as->a[i];
         ck_case_state_t *st = &pl.st[i];

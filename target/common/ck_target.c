@@ -85,13 +85,25 @@ ck_act_shm_t *ck_map_act(int writable, int wait_s) {
 }
 
 void ck_plant_read(const ck_plant_shm_t *s, ck_plant_shm_t *out) {
-  for (;;) {
-    uint32_t a = atomic_load_explicit(&s->seq, memory_order_acquire);
+  /* Never spin: readers (casectl, priority 40) outrank the writer (plantsim, 30).
+   * If a reader preempts plantsim mid-update and waits for it, the writer can
+   * never finish on that CPU (livelock). So try a few times, and if the data is
+   * still being written, use the last consistent snapshot instead. */
+  static ck_plant_shm_t last;
+  static int have_last;
+  for (int attempt = 0; attempt < 4; attempt++) {
+    const uint32_t a = atomic_load_explicit(&s->seq, memory_order_acquire);
     if (a & 1u) continue;
     memcpy((void *)out, (const void *)s, sizeof *out);
     atomic_thread_fence(memory_order_acquire);
-    if (atomic_load_explicit(&s->seq, memory_order_relaxed) == a) return;
+    if (atomic_load_explicit(&s->seq, memory_order_relaxed) == a) {
+      memcpy((void *)&last, (const void *)out, sizeof last);
+      have_last = 1;
+      return;
+    }
   }
+  if (have_last) memcpy((void *)out, (const void *)&last, sizeof *out);
+  else memcpy((void *)out, (const void *)s, sizeof *out); /* first read ever: best effort */
 }
 
 uint64_t ck_sim_now(const ck_plant_shm_t *s) {
