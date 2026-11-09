@@ -60,15 +60,16 @@ static int status_json(char *buf, size_t cap) {
   ck_plant_read(g_ps, &snap);
   int o = snprintf(buf, cap, "{\"ok\":true,\"mode\":\"%s\",\"t\":%.1f,\"cases\":[",
                    g_legacy ? "legacy" : "protected", (double)snap.sim_ns / 1e9);
-  for (uint16_t i = 0; i < snap.ncases && o < (int)cap - 200; i++) {
+  for (uint16_t i = 0; i < snap.ncases && o < (int)cap - 300; i++) {
     const ck_shm_case_t *c = &snap.c[i];
     const ck_act_slot_t *a = &g_as->a[i];
     o += snprintf(buf + o, cap - (size_t)o,
-                  "%s{\"id\":%u,\"type\":\"%s\",\"air\":%.2f,\"prod\":%.2f,\"sp\":%.1f,\"comp\":%u,"
-                  "\"heat\":%u,\"defrost\":%u,\"door\":%u,\"hold\":%u}",
+                  "%s{\"id\":%u,\"type\":\"%s\",\"air\":%.2f,\"prod\":%.2f,\"air_true\":%.3f,"
+                  "\"prod_true\":%.3f,\"sp\":%.1f,\"comp\":%u,\"heat\":%u,\"defrost\":%u,\"door\":%u,"
+                  "\"hold\":%u,\"jitter_us_max\":%u}",
                   i ? "," : "", i + 1, ck_case_type_name((ck_case_type_t)snap.types[i]), (double)c->air_c,
-                  (double)c->product_c, (double)a->setpoint_c, a->compressor_on, a->heater_on, a->defrost_on,
-                  c->door_open, a->hold);
+                  (double)c->product_c, (double)c->true_air_c, (double)c->true_product_c, (double)a->setpoint_c,
+                  a->compressor_on, a->heater_on, a->defrost_on, c->door_open, a->hold, a->jitter_us_max);
   }
   o += snprintf(buf + o, cap - (size_t)o, "]}");
   return o < (int)cap ? o : (int)cap - 1;
