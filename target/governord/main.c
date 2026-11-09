@@ -9,6 +9,10 @@
  * /dev/coldkeep/gov     owner = brokerd's uid, mode 0600; CK_MSG_GOV messages
  *                       (a sender that is not brokerd or root gets EACCES)
  * /dev/coldkeep/status  read-only text: envelope, verdict counters, recent decisions
+ * /dev/coldkeep/gov-key owner = keyconsole's uid, mode 0600; CK_MSG_APPROVED: a
+ *                       dangerous command approved at the store's local console.
+ *                       Applied only if the sender is keyconsole's uid AND holds
+ *                       the custom ability "coldkeep.envelope.write".
  *
  * Its state (envelope, rate-limit history, last manual defrosts) is saved after
  * every decision and restored on restart, so crashing it cannot reset G2/G3.
@@ -32,9 +36,10 @@
 #define PROC "governord"
 #define STATE_MAGIC 0x434B4753u /* "CKGS" */
 
-static resmgr_connect_funcs_t gov_connect, status_connect;
-static resmgr_io_funcs_t gov_io, status_io;
-static iofunc_attr_t gov_attr, status_attr;
+static resmgr_connect_funcs_t gov_connect, status_connect, key_connect;
+static resmgr_io_funcs_t gov_io, status_io, key_io;
+static iofunc_attr_t gov_attr, status_attr, key_attr;
+static int g_env_able = -1;
 
 static ck_gov_t g_gov;
 static ck_plant_shm_t *g_ps;
@@ -132,6 +137,41 @@ static int on_cmd(message_context_t *ctp, int type, unsigned flags, void *handle
   return 0;
 }
 
+/* Does the sender of this message hold "coldkeep.envelope.write"? Fails closed. */
+static int sender_holds_envelope_write(int scoid) {
+  if (g_env_able < 0) g_env_able = procmgr_ability_lookup(CK_ABILITY_ENVELOPE_WRITE);
+  if (g_env_able < 0) return 0;
+  struct _client_info *info = NULL;
+  struct _client_able able;
+  memset(&able, 0, sizeof able);
+  able.ability = (unsigned)g_env_able;
+  if (ConnectClientInfoAble(scoid, &info, 0, &able, 1) == -1) return 0;
+  if (info) free(info);
+  return able.flags != 0;
+}
+
+static int on_approved(message_context_t *ctp, int type, unsigned flags, void *handle) {
+  const int uid = ck_sender_uid(ctp->info.scoid);
+  if (uid != CK_UID_KEY || !sender_holds_envelope_write(ctp->info.scoid)) {
+    g_rejected++;
+    ck_audit_event(g_audit_fd, ck_sim_now(g_ps), "governord: rejected approval from uid %d (needs %s)", uid,
+                   CK_ABILITY_ENVELOPE_WRITE);
+    MsgError(ctp->rcvid, EPERM);
+    return 0;
+  }
+  if (ctp->info.msglen < (ssize_t)sizeof(ck_msg_approved_t)) { MsgError(ctp->rcvid, EINVAL); return 0; }
+  ck_msg_approved_t m;
+  memcpy(&m, ctp->msg, sizeof m);
+  m.cmd.origin[sizeof m.cmd.origin - 1] = '\0';
+  m.cmd.user[sizeof m.cmd.user - 1] = '\0';
+  ck_decision_t d;
+  ck_gov_apply_approved(&g_gov, &m.cmd, m.approval_id, &d);
+  ck_audit_decision(g_audit_fd, &d, ck_sim_now(g_ps));
+  save_state();
+  MsgReply(ctp->rcvid, EOK, &d, sizeof d);
+  return 0;
+}
+
 static int on_tick(message_context_t *ctp, int code, unsigned flags, void *handle) {
   const ck_case_cmd_t hb = {.type = CASE_CMD_HEARTBEAT};
   for (uint16_t i = 1; i <= g_n; i++) case_devctl(i, &hb);
@@ -211,6 +251,10 @@ int main(void) {
   gov_attr.uid = CK_UID_BROKER;
   gov_attr.gid = CK_UID_BROKER;
   iofunc_attr_init(&status_attr, S_IFNAM | 0444, NULL, NULL);
+  iofunc_func_init(_RESMGR_CONNECT_NFUNCS, &key_connect, _RESMGR_IO_NFUNCS, &key_io);
+  iofunc_attr_init(&key_attr, S_IFNAM | 0600, NULL, NULL);
+  key_attr.uid = CK_UID_KEY;
+  key_attr.gid = CK_UID_KEY;
   resmgr_attr_t rattr;
   memset(&rattr, 0, sizeof rattr);
   rattr.nparts_max = 1;
@@ -218,7 +262,9 @@ int main(void) {
   if (!dpp ||
       resmgr_attach(dpp, &rattr, CK_DEV_GOV, _FTYPE_ANY, 0, &gov_connect, &gov_io, &gov_attr) == -1 ||
       resmgr_attach(dpp, &rattr, CK_DEV_STATUS, _FTYPE_ANY, 0, &status_connect, &status_io, &status_attr) == -1 ||
-      message_attach(dpp, NULL, CK_MSG_GOV, CK_MSG_GOV, on_cmd, NULL) == -1) {
+      resmgr_attach(dpp, &rattr, CK_DEV_GOVKEY, _FTYPE_ANY, 0, &key_connect, &key_io, &key_attr) == -1 ||
+      message_attach(dpp, NULL, CK_MSG_GOV, CK_MSG_GOV, on_cmd, NULL) == -1 ||
+      message_attach(dpp, NULL, CK_MSG_APPROVED, CK_MSG_APPROVED, on_approved, NULL) == -1) {
     ck_log(PROC, "attach: %s", strerror(errno));
     return 1;
   }
