@@ -134,7 +134,18 @@ static void handle_line(client_t *c, int idx, const char *line, size_t len) {
     m.hdr.type = CK_MSG_CMD;
     m.session = (uint32_t)idx;
     m.cmd = cmd;
-    if (MsgSend(g_broker_fd, &m, sizeof m, &d, sizeof d) == -1) {
+    int sent = -1;
+    for (int attempt = 0; attempt < 2 && sent == -1; attempt++) {
+      if (g_broker_fd < 0) g_broker_fd = open(CK_DEV_BROKER, O_RDWR);
+      if (g_broker_fd >= 0) sent = MsgSend(g_broker_fd, &m, sizeof m, &d, sizeof d);
+      if (sent == -1 && g_broker_fd >= 0 && (errno == EBADF || errno == ESRCH || errno == ENOTCONN)) {
+        close(g_broker_fd); /* brokerd restarted: reconnect once */
+        g_broker_fd = -1;
+      } else if (sent == -1) {
+        break;
+      }
+    }
+    if (sent == -1) {
       char why[96];
       snprintf(why, sizeof why, "broker unavailable: %s", strerror(errno));
       send_line(c, out, ck_proto_reply_error(out, sizeof out, why));
