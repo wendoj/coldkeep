@@ -4,7 +4,7 @@ Record each answer with the doc link or the exact command used and its output. D
 
 ## How to answer them
 
-1. Build the checks: `scripts/qnx-build.sh target/qnxcheck` (uses the `qnx-build` Docker container).
+1. Once: `bash docker/setup.sh` (creates the `qnx-build` container). Then build the checks: `scripts/qnx-build.sh target/qnxcheck`.
    If it does not compile, the compiler errors answer question 1's "exact signatures" part.
 2. Copy them: `scripts/qnx-deploy.sh <target-ip> target/qnxcheck able_server able_client run-checks.sh`.
 3. On the target, as root: `cd ~qnxuser/ckcheck && sh run-checks.sh > results.txt 2>&1`.
