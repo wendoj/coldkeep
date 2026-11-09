@@ -5,13 +5,13 @@ CFLAGS  ?= -O2
 CFLAGS  += -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wpedantic -Werror \
            -Wno-unused-parameter -ffp-contract=off -Iinclude
 BUILD   := build
-SRCS    := common.c prng.c thermal.c plant.c control.c governor.c broker.c journal.c metrics.c store.c
+SRCS    := common.c prng.c thermal.c plant.c control.c governor.c broker.c journal.c metrics.c store.c proto.c
 OBJS    := $(SRCS:%.c=$(BUILD)/%.o)
 LIB     := $(BUILD)/libcoldkeep.a
 
 UNIT_SRCS := tests/test_main.c tests/test_prng.c tests/test_thermal.c tests/test_control.c \
              tests/test_governor.c tests/test_broker.c tests/test_journal.c tests/test_metrics.c \
-             tests/test_store.c
+             tests/test_store.c tests/test_proto.c
 
 CK_PROP_RUNS ?= 1000
 CK_PROP_CMDS ?= 1000

@@ -354,6 +354,32 @@ float  ck_metrics_food_at_risk_kg(const ck_metrics_t *m);
 bool   ck_metrics_compliance_due(ck_metrics_t *m, uint64_t now);
 
 /* ------------------------------------------------------------------ */
+/* proto.c — mgmtd JSON-lines protocol (untrusted input)               */
+/* ------------------------------------------------------------------ */
+
+typedef enum { REQ_INVALID = 0, REQ_LOGIN, REQ_STATUS, REQ_CMD, REQ_DEBUG_EXEC } ck_req_kind_t;
+
+#define CK_PROTO_MAX_LINE 1024
+typedef struct {
+  ck_req_kind_t kind;
+  ck_cmd_type_t cmd;           /* REQ_CMD */
+  uint16_t case_id;
+  float value;
+  char user[32], pass[32];     /* REQ_LOGIN */
+  char action[32];             /* REQ_DEBUG_EXEC */
+  char error[64];              /* set when parsing fails */
+} ck_req_t;
+
+/* Parse one request line (a flat JSON object). Returns 0, or -1 with req->error set. */
+int ck_proto_parse(const char *line, size_t len, ck_req_t *req);
+/* Reply lines (JSON, no trailing newline). Return the length written (truncated to cap-1). */
+int ck_proto_reply_decision(char *buf, size_t cap, const ck_decision_t *d);
+int ck_proto_reply_error(char *buf, size_t cap, const char *msg);
+int ck_proto_reply_ok(char *buf, size_t cap, const char *msg);
+/* JSON string escaping into buf; returns bytes written (excluding NUL). */
+size_t ck_json_escape(char *buf, size_t cap, const char *s);
+
+/* ------------------------------------------------------------------ */
 /* plant.c — all cases' physics + shopper load + probe noise (plantsim)  */
 /* ------------------------------------------------------------------ */
 

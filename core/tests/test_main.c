@@ -12,12 +12,13 @@ void suite_broker(void);
 void suite_journal(void);
 void suite_metrics(void);
 void suite_store(void);
+void suite_proto(void);
 
 int main(void) {
   struct { const char *name; void (*fn)(void); } suites[] = {
     {"prng", suite_prng},         {"thermal", suite_thermal}, {"control", suite_control},
     {"governor", suite_governor}, {"broker", suite_broker},   {"journal", suite_journal},
-    {"metrics", suite_metrics},   {"store", suite_store},
+    {"metrics", suite_metrics},   {"store", suite_store},     {"proto", suite_proto},
   };
   for (size_t i = 0; i < sizeof suites / sizeof suites[0]; i++) {
     int before = ck_t_fail;
