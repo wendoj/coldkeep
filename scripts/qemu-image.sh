@@ -37,8 +37,10 @@ mki --type=qemu --arch=x86_64 --hostname="$HOST" --ssh-ident="$CKEY" --build >/d
 S=$DIR/local/snippets
 grep -q 'sshd-auth' "$S/system_files.custom" ||
   printf '\n# OpenSSH sshd needs its sshd-auth helper next to sshd-session\nbin/sshd-auth=usr/libexec/sshd-auth\n' >> "$S/system_files.custom"
-grep -q 'sshd-auth' "$S/post_start.custom" ||
-  printf '\n# sshd looks for its auth helper at /usr/libexec/sshd-auth\nln -sP /system/bin/sshd-auth /usr/libexec/sshd-auth\n' >> "$S/post_start.custom"
+# The stock boot-time sshd start exits (it looks for /usr/libexec/sshd-auth), so
+# start sshd again at the end of start-up, pointing it at the real helper path.
+grep -q 'SshdAuthPath' "$S/post_start.custom" ||
+  printf '\n# start sshd with the path of its auth helper\npidin -f a | grep -q "bin/sshd" || /system/bin/sshd -f /system/etc/ssh/sshd_config -o SshdAuthPath=/system/bin/sshd-auth\n' >> "$S/post_start.custom"
 
 mki --build | grep -i -E 'error|fail' || true
 ls -l "$DIR/output/disk-qemu" "$DIR/output/ifs.bin"

@@ -13,6 +13,7 @@
 #   ssh  127.0.0.1:(2222+N)   -> target 22
 #   mgmt 127.0.0.1:(18080+N)  -> target 8080
 #   tele 127.0.0.1:(17070+N)  -> target 7070
+#   serial console (headless only) on 127.0.0.1:(4440+N), also logged to output/qemu.out
 set -euo pipefail
 
 DIR=${1:?usage: qemu-run.sh <image-dir> [--slot N] [--headless|--stop]}
@@ -37,7 +38,7 @@ fi
 
 opt() { grep "^OPT_$1=" output/options | head -1 | cut -d"'" -f2; }
 CPU=$(opt CPU); RAM=$(opt RAM); MAC=$(opt MACADDR)
-SSH=$((2222 + SLOT)); MGMT=$((18080 + SLOT)); TELE=$((17070 + SLOT))
+SSH=$((2222 + SLOT)); MGMT=$((18080 + SLOT)); TELE=$((17070 + SLOT)); CONS=$((4440 + SLOT))
 
 ARGS=(
   -cpu max -smp "$CPU" -m "$RAM"   # no hardware accel on macOS: same as QNX runimage without KVM
@@ -51,8 +52,10 @@ ARGS=(
 
 echo "ssh: ssh -p $SSH root@127.0.0.1   mgmt: 127.0.0.1:$MGMT   telemetry: 127.0.0.1:$TELE"
 if [ "$HEADLESS" = 1 ]; then
-  qemu-system-x86_64 "${ARGS[@]}" -display none -serial file:output/qemu.out -monitor none -daemonize
-  echo "running in background; console log: $DIR/output/qemu.out; stop with --stop"
+  qemu-system-x86_64 "${ARGS[@]}" -display none -monitor none -daemonize \
+    -chardev "socket,id=ser0,host=127.0.0.1,port=$CONS,server=on,wait=off,logfile=output/qemu.out" \
+    -serial chardev:ser0
+  echo "running in background; console: nc 127.0.0.1 $CONS (log: $DIR/output/qemu.out); stop with --stop"
 else
   echo "serial console below; quit QEMU with Ctrl+A then X"
   exec qemu-system-x86_64 "${ARGS[@]}" -nographic -serial mon:stdio
