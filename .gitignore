@@ -1,0 +1,47 @@
+# --- QNX SDK files: NEVER commit (licence) ---
+qnxsdp-env.sh
+qnxsdp-env.bat
+**/qnx800/
+**/qnx8*/
+**/.qnx/
+**/License*.txt
+**/licenses/
+*.ifs
+*.img
+*.qcow2
+target-images/
+qsti/
+sdk/
+
+# --- Build outputs ---
+*.o
+*.a
+*.so
+*.dSYM/
+core/build/
+sim-host/build/
+sim-host/ck-sim
+target/**/build/
+target/**/x86_64/
+target/**/aarch64le/
+
+# --- Runtime data ---
+recordings/*.jsonl
+results/*
+!results/.gitkeep
+/out/
+*.bin
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+.idea/
+*.swp
