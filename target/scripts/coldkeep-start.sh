@@ -16,7 +16,7 @@ BIN=/data/coldkeep/bin
 DATA=/data/coldkeep
 LOG=$DATA/log
 
-slay -f mgmtd brokerd governord casectl auditd plantsim >/dev/null 2>&1
+slay -f bridge mgmtd brokerd governord casectl auditd plantsim >/dev/null 2>&1
 sleep 1
 [ "$MODE" = stop ] && { echo "stopped"; exit 0; }
 case "$MODE" in legacy|protected) ;; *) echo "mode must be legacy or protected"; exit 2 ;; esac
@@ -51,8 +51,10 @@ if [ "$MODE" = protected ]; then
   "$BIN/brokerd" > "$LOG/brokerd.log" 2>&1 &
   sleep 1
   "$BIN/mgmtd" > "$LOG/mgmtd.log" 2>&1 &
+  "$BIN/bridge" > "$LOG/bridge.log" 2>&1 &
 else
   "$BIN/mgmtd" -L > "$LOG/mgmtd.log" 2>&1 &
+  "$BIN/bridge" -L > "$LOG/bridge.log" 2>&1 &
 fi
 sleep 2
 echo "COLDKEEP $MODE store: $N cases, seed $SEED, speed ${SPEED}x"
