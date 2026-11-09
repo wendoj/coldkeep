@@ -238,6 +238,7 @@ int main(void) {
   if (ck_set_fifo_prio(CK_PRIO_GOV) != EOK) ck_log(PROC, "warning: could not set priority");
   const unsigned keep = (unsigned)able;
   if (ck_drop_to(CK_UID_GOV, &keep, 1, 0) != 0) { ck_log(PROC, "drop privileges: %s", strerror(errno)); return 1; }
+  save_state(); /* from the first moment, so a restart always restores (as uid ck_gov) */
   ck_log(PROC, "governing %u cases; ability %s=%d kept; state %s; uid %d", g_n, CK_ABILITY_PLANT_WRITE,
          able, restored ? "restored" : "fresh", (int)getuid());
   ck_audit_event(g_audit_fd, ck_sim_now(g_ps), "governord started (%s state)", restored ? "restored" : "fresh");
