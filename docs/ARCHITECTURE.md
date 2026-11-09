@@ -32,3 +32,37 @@ JSONL event types: `meta`, `telemetry` (every 30 sim-s), `decision`, `attack`, `
 - **A2 control-loop jitter.** The host is one process, so it only shows the broker's per-session rate limit. Jitter must be measured on QNX.
 - **A3 errnos.** These come from a table in `ck_store_compromised_attempt()` that records what the target's access control *must* return. The output labels them `"source":"host-model"`. On the target the errnos come from QNX itself.
 - **Governor restart.** The host keeps governor state (rate-limit history, last manual defrost) across a restart. On the target, `governord` must restore this from the journal, or an attacker could crash it to reset G2/G3.
+
+## On QNX
+
+Each module runs as its own process, under its own uid, at its own `SCHED_FIFO` priority
+([`target/`](../target), started by [`target/scripts/coldkeep-start.sh`](../target/scripts/coldkeep-start.sh)).
+
+| Process | uid | Priority | Owns | Who may use it |
+|---|---|---|---|---|
+| `plantsim` | 1101 | 30 | shared memory `/coldkeep_plant` (probe readings, sim clock) | everyone reads; only `plantsim` writes |
+| `casectl` ×N | 1102 | 40 | `/dev/coldkeep/case/N`; its slot in `/coldkeep_act` | anyone may read; `devctl`/write needs the custom ability `coldkeep.plant.write` (protected mode) |
+| `governord` | 1103 | 35 | `/dev/coldkeep/gov` (owner 1104, mode 0600), `/dev/coldkeep/status` | only `brokerd` can open the command channel; sender uid checked again on each message |
+| `brokerd` | 1104 | 25 | `/dev/coldkeep/broker` (owner 1105, mode 0600) | only `mgmtd` |
+| `auditd` | 1106 | 20 | `/dev/coldkeep/audit`; `/data/coldkeep/audit.bin` (0600) | records accepted from trusted uids only |
+| `mgmtd` | 1105 | 10 | TCP 8080 (JSON lines) | the network; holds **no** abilities (all denied and locked) |
+
+`governord` creates `coldkeep.plant.write` and is the only process that keeps it when it
+drops root; on QNX 8.0 even root does not hold a newly created custom ability
+([QNX_FEATURES.md](QNX_FEATURES.md), question 1). Messages between processes are sent
+with `MsgSend` on a file descriptor opened on the server's path, so the file mode and
+owner decide who can connect at all.
+
+**Legacy mode** runs the same plant, controllers and auditor, but `casectl -L` performs
+no ability check and `mgmtd -L` stays root and writes the controllers directly; there is
+no governor or broker.
+
+**Fail-safe (G6).** `governord` sends a heartbeat `devctl` to every controller every
+250 ms of wall time; a controller that misses heartbeats for 2 s of wall time holds its
+last-known-good configuration and refuses to start a defrost.
+
+**Comparison runs.** [`scripts/run-compare.py`](../scripts/run-compare.py) restarts a
+legacy store (QEMU slot 1) and a protected store (slot 0) with the same seed and speed,
+runs A1 through the API and A3 as shell commands with `mgmtd`'s uid, and records both to
+`recordings/`. Plant timing on QEMU follows the wall clock, so two runs with the same seed
+are similar but not byte-identical (unlike `sim-host`).
