@@ -19,7 +19,7 @@ static void a1(ck_store_t *s) {
   ck_store_login(s, 1, "admin", "admin");
   for (uint16_t c = 1; c <= s->n; c++) { ck_store_mgmt(s, 1, CMD_START_DEFROST, c, 86400, &d); run_for(s, 1); }
   for (uint16_t c = 1; c <= s->n; c++) {
-    ck_store_mgmt(s, 1, CMD_SET_SETPOINT, c, s->st[c - 1].setpoint_c + 25.0f, &d);
+    ck_store_mgmt(s, 1, CMD_SET_SETPOINT, c, s->plant.st[c - 1].setpoint_c + 25.0f, &d);
     run_for(s, 1);
   }
   ck_store_mgmt(s, 1, CMD_DISABLE_ALARMS, 0, 0, &d);
@@ -81,13 +81,13 @@ static void a4_governor_crash_g6(void) {
   ck_decision_t d;
   ck_store_mgmt(&P, 1, CMD_START_DEFROST, 1, 2700, &d);
   run_for(&P, 30);
-  CHECK(P.st[0].defrost_on);
+  CHECK(P.plant.st[0].defrost_on);
   ck_store_kill_governor(&P, 30.0f);
   ck_store_mgmt(&P, 1, CMD_START_DEFROST, 2, 2700, &d);
   CHECK_EQ_INT(d.rule_id, CK_RULE_UNAVAILABLE);
   run_for(&P, 5);
   for (int i = 0; i < 8; i++) CHECK(P.ctl[i].hold);
-  CHECK(!P.st[0].heater_on);
+  CHECK(!P.plant.st[0].heater_on);
   run_for(&P, 30);
   CHECK(P.gov_up);
   for (int i = 0; i < 8; i++) CHECK(!P.ctl[i].hold);
@@ -112,13 +112,13 @@ static void same_seed_same_run(void) {
   ck_store_init(&a, MODE_PROTECTED, 11, 8, types, 20.0f, 0.1f);
   ck_store_init(&b, MODE_PROTECTED, 11, 8, types, 20.0f, 0.1f);
   run_for(&a, 900); run_for(&b, 900);
-  CHECK(memcmp(a.st, b.st, sizeof a.st) == 0);
+  CHECK(memcmp(a.plant.st, b.plant.st, sizeof a.plant.st) == 0);
   /* shopper load identical across modes */
   static ck_store_t l;
   ck_store_init(&l, MODE_LEGACY, 11, 8, types, 20.0f, 0.1f);
   run_for(&l, 900);
   int same = 1;
-  for (int i = 0; i < 8; i++) same &= l.door_rng[i].s == a.door_rng[i].s;
+  for (int i = 0; i < 8; i++) same &= l.plant.door_rng[i].s == a.plant.door_rng[i].s;
   CHECK(same);
 }
 

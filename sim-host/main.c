@@ -103,8 +103,8 @@ static void sink(ck_store_t *s, ck_ev_kind_t kind, const void *p, void *ctx) {
       fprintf(f, "{\"type\":\"compliance\",\"t\":"); jnum(f, t_s(s));
       fputs(",\"cases\":[", f);
       for (uint16_t i = 0; i < s->n; i++) {
-        fprintf(f, "%s{\"id\":%u,\"air\":", i ? "," : "", i + 1); jnum(f, s->st[i].air_c);
-        fputs(",\"prod\":", f); jnum(f, s->st[i].product_c); fputc('}', f);
+        fprintf(f, "%s{\"id\":%u,\"air\":", i ? "," : "", i + 1); jnum(f, s->plant.st[i].air_c);
+        fputs(",\"prod\":", f); jnum(f, s->plant.st[i].product_c); fputc('}', f);
       }
       fputs("]}\n", f);
       break;
@@ -120,7 +120,7 @@ static void write_telemetry(sim_t *sim) {
   fprintf(f, "{\"type\":\"telemetry\",\"t\":"); jnum(f, t_s(s));
   fputs(",\"cases\":[", f);
   for (uint16_t i = 0; i < s->n; i++) {
-    const ck_case_state_t *c = &s->st[i];
+    const ck_case_state_t *c = &s->plant.st[i];
     fprintf(f, "%s{\"id\":%u,\"air\":", i ? "," : "", i + 1); jnum(f, c->air_c);
     fputs(",\"prod\":", f); jnum(f, c->product_c);
     fputs(",\"evap\":", f); jnum(f, c->evap_c);
@@ -372,7 +372,7 @@ static int check(const sim_t *sims, int nsims, const scenario_t *sc) {
     if (s->mode == MODE_PROTECTED) {
       if (mins > 0) { fprintf(stderr, "CHECK FAILED: protected store above limit for %.1f min\n", mins); bad = 1; }
       for (uint16_t c = 0; c < s->n; c++) {
-        const uint32_t mx = s->env.t[s->st[c].type].defrost_max_s;
+        const uint32_t mx = s->env.t[s->plant.st[c].type].defrost_max_s;
         if (s->m.c[c].defrost_s_max > mx) { fprintf(stderr, "CHECK FAILED: case %u defrost %llu s > %u s\n", c + 1,
                                                     (unsigned long long)s->m.c[c].defrost_s_max, mx); bad = 1; }
       }
@@ -442,7 +442,7 @@ int main(int argc, char **argv) {
     sim->out = fopen(path, "w");
     if (!sim->out) { fprintf(stderr, "cannot write %s\n", path); return 2; }
     ck_store_init(&sim->s, modes[i], sc.seed, sc.ncases, sc.types, sc.ambient_c, 0.1f);
-    sim->s.start_hour = sc.start_hour;
+    sim->s.plant.start_hour = sc.start_hour;
     ck_store_set_sink(&sim->s, sink, sim);
     FILE *f = sim->out;
     fprintf(f, "{\"type\":\"meta\",\"scenario\":"); jstr(f, sc.name);

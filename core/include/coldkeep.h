@@ -161,6 +161,8 @@ typedef struct {
   /* G6 fail-safe */
   bool protected_mode;          /* expects governor heartbeats */
   uint64_t last_hb_ns;
+  uint64_t hb_timeout_ns;       /* default CK_HB_TIMEOUT_NS; the target scales it so
+                                   the timeout is 2 s of WALL time at any sim speed */
   bool hold;                    /* governor lost: hold last-known-good config */
   uint32_t defrosts_started;
 } ck_ctl_t;
@@ -178,6 +180,9 @@ int  ck_ctl_command(ck_ctl_t *c, const ck_case_cmd_t *cmd, uint64_t now);
 /* Run the control loop once; writes actuator outputs + setpoint/defrost fields into *out. */
 void ck_ctl_tick(ck_ctl_t *c, const ck_probe_t *probe, uint64_t now, ck_case_state_t *out);
 bool ck_ctl_in_defrost(const ck_ctl_t *c);
+/* Legacy flat architecture: map a management command straight onto a case command
+ * (no envelope; "manual defrost" is forced). Returns false if it is not a case command. */
+bool ck_ctl_legacy_map(const ck_cmd_t *cmd, ck_case_cmd_t *out);
 
 /* ------------------------------------------------------------------ */
 /* governor.c — safety envelope G1–G5 (G6 lives in control.c)          */
@@ -349,6 +354,30 @@ float  ck_metrics_food_at_risk_kg(const ck_metrics_t *m);
 bool   ck_metrics_compliance_due(ck_metrics_t *m, uint64_t now);
 
 /* ------------------------------------------------------------------ */
+/* plant.c — all cases' physics + shopper load + probe noise (plantsim)  */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+  uint16_t n;
+  float dt_s;                   /* plant step (0.1 s default) */
+  float start_hour;             /* time of day at t=0, for shopper load */
+  ck_case_state_t st[CK_MAX_CASES];      /* ground truth + actuator inputs */
+  ck_thermal_params_t p[CK_MAX_CASES];
+  ck_rng_t door_rng[CK_MAX_CASES], noise_rng[CK_MAX_CASES];
+  uint64_t door_close_ns[CK_MAX_CASES];
+  ck_probe_t probe[CK_MAX_CASES];        /* noisy sensor readings */
+} ck_plant_t;
+
+void ck_plant_init(ck_plant_t *pl, uint64_t seed, uint16_t n, const ck_case_type_t *types,
+                   float ambient_c, float dt_s);
+/* Shopper load + probe readings at time now. Consumes the same RNG draws every
+ * call regardless of mode, so legacy and protected stores see identical loads. */
+void ck_plant_sense(ck_plant_t *pl, uint64_t now);
+/* Physics step of dt_s using the actuator fields in pl->st. */
+void ck_plant_advance(ck_plant_t *pl);
+uint64_t ck_plant_dt_ns(const ck_plant_t *pl);
+
+/* ------------------------------------------------------------------ */
 /* store.c — in-process wiring of one store (host sim + property tests) */
 /* ------------------------------------------------------------------ */
 
@@ -371,14 +400,8 @@ struct ck_store {
   uint16_t n;
   uint64_t seed;
   uint64_t now;
-  float dt_s;                   /* plant step (0.1 s default) */
-  float start_hour;             /* time of day at t=0, for shopper load */
-  ck_case_state_t st[CK_MAX_CASES];
-  ck_thermal_params_t p[CK_MAX_CASES];
+  ck_plant_t plant;
   ck_ctl_t ctl[CK_MAX_CASES];
-  ck_rng_t door_rng[CK_MAX_CASES], noise_rng[CK_MAX_CASES];
-  uint64_t door_close_ns[CK_MAX_CASES];
-  ck_probe_t probe[CK_MAX_CASES];
   ck_envelope_t env;
   ck_gov_t gov;
   ck_broker_t broker;

@@ -13,9 +13,6 @@
 #include <math.h>
 #include <string.h>
 
-static uint64_t dt_ns(const ck_store_t *s) {
-  return (uint64_t)(s->dt_s * 1000.0f + 0.5f) * 1000000ULL;
-}
 
 static void emit(ck_store_t *s, ck_ev_kind_t k, const void *p) {
   if (s->cb) s->cb(s, k, p, s->cb_ctx);
@@ -27,70 +24,29 @@ void ck_store_init(ck_store_t *s, ck_mode_t mode, uint64_t seed, uint16_t n,
   s->mode = mode;
   s->seed = seed;
   s->n = n > CK_MAX_CASES ? CK_MAX_CASES : n;
-  s->dt_s = dt_s;
-  s->start_hour = 9.0f;
   s->next_cmd_id = 1;
   s->alarms_enabled = true;
   s->gov_up = (mode == MODE_PROTECTED);
-  for (uint16_t i = 0; i < s->n; i++) {
-    const uint16_t id = (uint16_t)(i + 1);
-    ck_thermal_init(&s->st[i], id, types[i], ambient_c);
-    s->p[i] = *ck_thermal_defaults(types[i]);
-    ck_ctl_init(&s->ctl[i], id, types[i], mode == MODE_PROTECTED, 0);
-    /* streams depend on seed + case index only, never on mode */
-    ck_rng_seed(&s->door_rng[i], ck_rng_derive(seed, 100u + i));
-    ck_rng_seed(&s->noise_rng[i], ck_rng_derive(seed, 200u + i));
-  }
+  ck_plant_init(&s->plant, seed, s->n, types, ambient_c, dt_s);
+  for (uint16_t i = 0; i < s->n; i++)
+    ck_ctl_init(&s->ctl[i], (uint16_t)(i + 1), types[i], mode == MODE_PROTECTED, 0);
   ck_envelope_default(&s->env);
   ck_gov_init(&s->gov, &s->env, s->n, types, 0);
   ck_broker_init(&s->broker, &s->gov.env, s->n, types);
   ck_keyq_init(&s->keyq);
-  ck_metrics_init(&s->m, s->n, s->st);
+  ck_metrics_init(&s->m, s->n, s->plant.st);
   for (uint16_t i = 0; i < s->n; i++) s->legacy_next_sched_ns[i] = s->gov.c[i].next_sched_ns;
 }
 
 void ck_store_set_sink(ck_store_t *s, ck_ev_cb cb, void *ctx) { s->cb = cb; s->cb_ctx = ctx; }
 
-static float door_factor(const ck_store_t *s) {
-  float h = s->start_hour + (float)(s->now / CK_NS_PER_S) / 3600.0f;
-  while (h >= 24.0f) h -= 24.0f;
-  if (h >= 8.0f && h < 21.0f) return 1.0f;
-  if (h >= 7.0f && h < 22.0f) return 0.4f;
-  return 0.05f;
-}
-
-static void shopper_load(ck_store_t *s) {
-  const float f = door_factor(s);
-  for (uint16_t i = 0; i < s->n; i++) {
-    const float u = ck_rng_uniform(&s->door_rng[i]); /* drawn every tick */
-    if (s->st[i].door_open && s->now >= s->door_close_ns[i]) s->st[i].door_open = 0;
-    const float p = s->p[i].door_rate_h / 3600.0f * f * s->dt_s;
-    if (!s->st[i].door_open && u < p) {
-      const float dur = ck_rng_range(&s->door_rng[i], s->p[i].door_min_s, s->p[i].door_max_s);
-      s->st[i].door_open = 1;
-      s->door_close_ns[i] = s->now + (uint64_t)(dur * 1000.0f) * 1000000ULL;
-    }
-  }
-}
-
-static void read_probes(ck_store_t *s) {
-  for (uint16_t i = 0; i < s->n; i++) {
-    const float na = 0.05f * ck_rng_gauss(&s->noise_rng[i]);
-    const float np = 0.05f * ck_rng_gauss(&s->noise_rng[i]);
-    const float ne = 0.05f * ck_rng_gauss(&s->noise_rng[i]);
-    s->probe[i].air_c = s->st[i].air_c + na;
-    s->probe[i].product_c = s->st[i].product_c + np;
-    s->probe[i].evap_c = s->st[i].evap_c + ne;
-  }
-}
-
 /* The governor sees probe values, not ground truth. */
 static void probe_view(const ck_store_t *s, ck_case_state_t *v) {
   for (uint16_t i = 0; i < s->n; i++) {
-    v[i] = s->st[i];
-    v[i].air_c = s->probe[i].air_c;
-    v[i].product_c = s->probe[i].product_c;
-    v[i].evap_c = s->probe[i].evap_c;
+    v[i] = s->plant.st[i];
+    v[i].air_c = s->plant.probe[i].air_c;
+    v[i].product_c = s->plant.probe[i].product_c;
+    v[i].evap_c = s->plant.probe[i].evap_c;
     /* defrost state straight from the controller, so several commands in the
      * same instant cannot all pass the G3 concurrency check */
     v[i].defrost_on = ck_ctl_in_defrost(&s->ctl[i]) ? 1 : 0;
@@ -120,7 +76,7 @@ static void governor_tick(ck_store_t *s) {
 static void legacy_schedule(ck_store_t *s) {
   for (uint16_t i = 0; i < s->n; i++) {
     if (s->now < s->legacy_next_sched_ns[i]) continue;
-    const ck_env_type_t *et = &s->env.t[s->st[i].type];
+    const ck_env_type_t *et = &s->env.t[s->plant.st[i].type];
     ck_case_cmd_t c = {.type = CASE_CMD_START_DEFROST, .duration_s = et->sched_defrost_s,
                        .term_c = et->term_c};
     ck_ctl_command(&s->ctl[i], &c, s->now);
@@ -145,9 +101,8 @@ void ck_store_step(ck_store_t *s) {
     for (uint16_t i = 0; i < s->n; i++) ck_ctl_command(&s->ctl[i], &hb, s->now);
   }
 
-  shopper_load(s);
-  read_probes(s);
-  for (uint16_t i = 0; i < s->n; i++) ck_ctl_tick(&s->ctl[i], &s->probe[i], s->now, &s->st[i]);
+  ck_plant_sense(&s->plant, s->now);
+  for (uint16_t i = 0; i < s->n; i++) ck_ctl_tick(&s->ctl[i], &s->plant.probe[i], s->now, &s->plant.st[i]);
 
   if (s->mode == MODE_PROTECTED && s->gov_up && s->now >= s->next_gov_tick_ns) {
     governor_tick(s);
@@ -163,17 +118,17 @@ void ck_store_step(ck_store_t *s) {
     }
   }
 
-  for (uint16_t i = 0; i < s->n; i++) ck_thermal_step(&s->st[i], &s->p[i], s->dt_s);
-  s->now += dt_ns(s);
-  ck_metrics_sample(&s->m, s->st, s->now, s->dt_s);
+  ck_plant_advance(&s->plant);
+  s->now += ck_plant_dt_ns(&s->plant);
+  ck_metrics_sample(&s->m, s->plant.st, s->now, s->plant.dt_s);
 
   for (uint16_t i = 0; i < s->n; i++) {
     const float lim = s->m.c[i].limit_c;
-    if (!s->alarm_latched[i] && s->st[i].product_c > lim) {
+    if (!s->alarm_latched[i] && s->plant.st[i].product_c > lim) {
       s->alarm_latched[i] = 1;
-      ck_ev_alarm_t ev = {(uint16_t)(i + 1), s->st[i].product_c, lim, (uint8_t)!alarms_on(s, i)};
+      ck_ev_alarm_t ev = {(uint16_t)(i + 1), s->plant.st[i].product_c, lim, (uint8_t)!alarms_on(s, i)};
       emit(s, EV_ALARM, &ev);
-    } else if (s->alarm_latched[i] && s->st[i].product_c < lim - 0.5f) {
+    } else if (s->alarm_latched[i] && s->plant.st[i].product_c < lim - 0.5f) {
       s->alarm_latched[i] = 0;
     }
   }
@@ -189,45 +144,20 @@ bool ck_store_login(ck_store_t *s, uint32_t session, const char *user, const cha
 
 static ck_verdict_t legacy_apply(ck_store_t *s, ck_cmd_t *cmd, ck_decision_t *d) {
   int err = 0;
-  ck_case_cmd_t cc = {0};
+  ck_case_cmd_t cc;
   ck_ctl_t *ctl = (cmd->case_id >= 1 && cmd->case_id <= s->n) ? &s->ctl[cmd->case_id - 1] : NULL;
-  const bool needs_case = cmd->type != CMD_STATUS && cmd->type != CMD_DISABLE_ALARMS;
-  if (needs_case && !ctl) err = EINVAL;
-  else switch (cmd->type) {
-    case CMD_SET_SETPOINT:
-      cc.type = CASE_CMD_SET_SETPOINT; cc.setpoint_c = cmd->value;
-      err = ck_ctl_command(ctl, &cc, s->now);
-      break;
-    case CMD_START_DEFROST:
-      /* flat architecture: the API's "manual defrost" is a forced defrost */
-      cc.type = CASE_CMD_START_DEFROST;
-      cc.duration_s = cmd->value >= 1.0f ? (uint32_t)cmd->value : 1u;
-      cc.term_c = CK_TERM_NONE;
-      err = ck_ctl_command(ctl, &cc, s->now);
-      break;
-    case CMD_STOP_DEFROST:
-      cc.type = CASE_CMD_STOP_DEFROST;
-      err = ck_ctl_command(ctl, &cc, s->now);
-      break;
-    case CMD_SET_FANS:
-      cc.type = CASE_CMD_SET_FANS; cc.fans = cmd->value != 0.0f;
-      err = ck_ctl_command(ctl, &cc, s->now);
-      break;
+  if (ck_ctl_legacy_map(cmd, &cc)) {
+    err = ctl ? ck_ctl_command(ctl, &cc, s->now) : EINVAL;
+  } else switch (cmd->type) {
     case CMD_DISABLE_ALARMS:
       s->alarms_enabled = false;
       break;
     case CMD_SET_DEFROST_SCHEDULE:
-      if (cmd->value >= 1.0f) s->env.t[s->st[cmd->case_id - 1].type].sched_interval_s =
-          (uint32_t)(cmd->value * 3600.0f);
+      if (!ctl) err = EINVAL;
+      else if (cmd->value >= 1.0f)
+        s->env.t[s->plant.st[cmd->case_id - 1].type].sched_interval_s = (uint32_t)(cmd->value * 3600.0f);
       break;
-    case CMD_RAW_WRITE:
-      cc.type = CASE_CMD_RAW_ACTUATORS;
-      cc.raw_override = cmd->value != 0.0f;
-      cc.raw_heater = cc.raw_override; cc.raw_compressor = 0; cc.raw_fans = 0;
-      err = ck_ctl_command(ctl, &cc, s->now);
-      break;
-    case CMD_CHANGE_ENVELOPE: /* no envelope exists in the flat architecture */
-    case CMD_STATUS:
+    default: /* change_envelope: no envelope exists in the flat architecture; status */
       break;
   }
   d->rule_id = CK_RULE_LEGACY;

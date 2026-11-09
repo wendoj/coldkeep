@@ -22,6 +22,7 @@ void ck_ctl_init(ck_ctl_t *c, uint16_t id, ck_case_type_t t, bool protected_mode
   c->fans_enabled = 1;
   c->protected_mode = protected_mode;
   c->last_hb_ns = now;
+  c->hb_timeout_ns = CK_HB_TIMEOUT_NS;
 }
 
 bool ck_ctl_in_defrost(const ck_ctl_t *c) {
@@ -76,7 +77,7 @@ int ck_ctl_command(ck_ctl_t *c, const ck_case_cmd_t *cmd, uint64_t now) {
 
 void ck_ctl_tick(ck_ctl_t *c, const ck_probe_t *pr, uint64_t now, ck_case_state_t *out) {
   /* G6 fail-safe: governor heartbeat lost -> hold last-known-good config */
-  if (c->protected_mode && now - c->last_hb_ns > CK_HB_TIMEOUT_NS && !c->hold) {
+  if (c->protected_mode && now - c->last_hb_ns > c->hb_timeout_ns && !c->hold) {
     c->hold = true;
     c->raw_override = 0;
     c->fans_enabled = 1;
@@ -136,4 +137,31 @@ void ck_ctl_tick(ck_ctl_t *c, const ck_probe_t *pr, uint64_t now, ck_case_state_
   const uint8_t was = out->defrost_on;
   out->defrost_on = ck_ctl_in_defrost(c) ? 1 : 0;
   if (out->defrost_on && !was) out->defrost_started_ns = c->defrost_start_ns;
+}
+
+bool ck_ctl_legacy_map(const ck_cmd_t *cmd, ck_case_cmd_t *out) {
+  *out = (ck_case_cmd_t){0};
+  switch (cmd->type) {
+    case CMD_SET_SETPOINT:
+      out->type = CASE_CMD_SET_SETPOINT; out->setpoint_c = cmd->value;
+      return true;
+    case CMD_START_DEFROST:
+      out->type = CASE_CMD_START_DEFROST;
+      out->duration_s = cmd->value >= 1.0f ? (uint32_t)cmd->value : 1u;
+      out->term_c = CK_TERM_NONE;
+      return true;
+    case CMD_STOP_DEFROST:
+      out->type = CASE_CMD_STOP_DEFROST;
+      return true;
+    case CMD_SET_FANS:
+      out->type = CASE_CMD_SET_FANS; out->fans = cmd->value != 0.0f;
+      return true;
+    case CMD_RAW_WRITE:
+      out->type = CASE_CMD_RAW_ACTUATORS;
+      out->raw_override = cmd->value != 0.0f;
+      out->raw_heater = out->raw_override;
+      return true;
+    default:
+      return false;
+  }
 }

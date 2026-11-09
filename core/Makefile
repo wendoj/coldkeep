@@ -5,7 +5,7 @@ CFLAGS  ?= -O2
 CFLAGS  += -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wpedantic -Werror \
            -Wno-unused-parameter -ffp-contract=off -Iinclude
 BUILD   := build
-SRCS    := common.c prng.c thermal.c control.c governor.c broker.c journal.c metrics.c store.c
+SRCS    := common.c prng.c thermal.c plant.c control.c governor.c broker.c journal.c metrics.c store.c
 OBJS    := $(SRCS:%.c=$(BUILD)/%.o)
 LIB     := $(BUILD)/libcoldkeep.a
 

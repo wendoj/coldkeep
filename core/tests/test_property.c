@@ -34,7 +34,7 @@ static float random_value(ck_rng_t *r, ck_cmd_type_t t, const ck_store_t *s, uin
   switch (t) {
     case CMD_SET_SETPOINT: {
       if (case_id >= 1 && case_id <= s->n && ck_rng_below(r, 2)) {
-        const ck_env_type_t *e = &s->gov.env.t[s->st[case_id - 1].type];
+        const ck_env_type_t *e = &s->gov.env.t[s->plant.st[case_id - 1].type];
         /* probe band edges and small steps */
         return ck_rng_range(r, e->sp_min - 3.0f, e->sp_max + 3.0f);
       }
@@ -68,18 +68,18 @@ static int one_run(uint64_t run, uint32_t ncmds, stats_t *S) {
       ck_store_step(&s);
       S->steps++;
       for (int i = 0; i < 4; i++) {
-        const ck_env_type_t *e = &s.gov.env.t[s.st[i].type];
+        const ck_env_type_t *e = &s.gov.env.t[s.plant.st[i].type];
         const float lim = s.m.c[i].limit_c;
-        const float margin = lim - s.st[i].product_c;
+        const float margin = lim - s.plant.st[i].product_c;
         if (margin < S->worst_margin[i]) S->worst_margin[i] = margin;
-        if (s.st[i].product_c > lim) {
+        if (s.plant.st[i].product_c > lim) {
           fprintf(stderr, "INVARIANT 1 violated: run %llu seed %llx case %d (%s) product %.3f > %.1f at t=%.0fs\n",
-                  (unsigned long long)run, (unsigned long long)seed, i + 1, ck_case_type_name(s.st[i].type),
-                  (double)s.st[i].product_c, (double)lim, (double)s.now / 1e9);
+                  (unsigned long long)run, (unsigned long long)seed, i + 1, ck_case_type_name(s.plant.st[i].type),
+                  (double)s.plant.st[i].product_c, (double)lim, (double)s.now / 1e9);
           return 1;
         }
-        if (s.st[i].defrost_on && !in_def[i]) { in_def[i] = 1; defrost_start[i] = s.now; }
-        if (!s.st[i].defrost_on) in_def[i] = 0;
+        if (s.plant.st[i].defrost_on && !in_def[i]) { in_def[i] = 1; defrost_start[i] = s.now; }
+        if (!s.plant.st[i].defrost_on) in_def[i] = 0;
         if (in_def[i] && s.now - defrost_start[i] > CK_S(e->defrost_max_s) + CK_S(1)) {
           fprintf(stderr, "INVARIANT 2 violated: run %llu case %d defrost %.0f s > %u s\n",
                   (unsigned long long)run, i + 1, (double)(s.now - defrost_start[i]) / 1e9, e->defrost_max_s);
