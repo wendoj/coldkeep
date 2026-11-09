@@ -1,0 +1,15 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  host:
+    # The QNX target build is not run in CI: it needs the licensed QNX SDP.
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: core unit + property tests, sim-host golden + determinism
+        run: make test
+      - name: full property sweep (10k runs x 1k commands)
+        run: make proptest-full
