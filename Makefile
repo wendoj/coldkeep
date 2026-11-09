@@ -1,5 +1,5 @@
 # COLDKEEP — host-side build and tests (no QNX SDK needed).
-.PHONY: all test core-test sim-test proptest-full golden demo clean
+.PHONY: all test core-test sim-test host-test proptest-full golden demo clean
 all:
 	$(MAKE) -C core
 	$(MAKE) -C sim-host
@@ -11,6 +11,10 @@ core-test:
 
 sim-test:
 	$(MAKE) -C sim-host test
+
+# Relay, attack runner and shared schemas (needs Node 20+; run `npm ci` in host/ first)
+host-test:
+	cd host && npm test && npm run typecheck
 
 # Full property sweep: 10k random runs x 1k commands (about 30 s)
 proptest-full:

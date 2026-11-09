@@ -21,3 +21,27 @@ jobs:
         env:
           CFLAGS: -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all
         run: make -C core unit proptest CK_PROP_RUNS=200
+  host-ui:
+    # relay, attack runner and dashboard: unit tests, typecheck, build, and a
+    # Playwright smoke test of the dashboard replaying a recorded QEMU run
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: host
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/package-lock.json
+      - run: npm ci
+      - name: schema, relay and attack runner tests
+        run: npm test
+      - run: npm run typecheck
+      - name: build dashboard
+        run: npm run build
+      - run: npx playwright install --with-deps chromium
+        working-directory: host/dashboard
+      - name: dashboard smoke test (replay mode)
+        run: npm run e2e
