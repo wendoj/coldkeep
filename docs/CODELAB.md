@@ -1,8 +1,8 @@
-# Codelab — build and verify COLDKEEP's QNX boundary
+# Codelab: build COLDKEEP and check its QNX boundary yourself
 
-**What you will do:** build COLDKEEP, run the legacy and protected stores on QNX 8.0 in QEMU, and verify from the target itself that a compromised management process cannot reach the plant. Then send the same commands from the dashboard and watch the governor decide.
+**What you'll do:** build COLDKEEP, run the legacy and protected stores on QNX 8.0 in QEMU, and check from the target's own shell that a compromised management process can't reach the plant. After that you'll send the same commands from the dashboard and watch the governor answer them.
 
-**Who it is for:** developers who know Linux and C, and want a concrete example of QNX abilities, resource managers and message passing used as a security boundary.
+**Who it's for:** developers who know Linux and C and want a working example of QNX abilities, resource managers and message passing used as a security boundary.
 
 **Time:** 15 minutes for the host-only path; 60–90 minutes for the full QNX path (mostly image build and boot).
 
@@ -12,7 +12,7 @@
 
 ---
 
-## Step 0 — Get the code
+## Step 0: Get the code
 
 ```sh
 git clone https://github.com/wendoj/coldkeep.git
@@ -21,7 +21,7 @@ cd coldkeep
 
 Checkpoint: `ls` shows `core/`, `target/`, `host/`, `scripts/` and `docs/`.
 
-## Step 1 — Prove the safety logic on the host (no QNX)
+## Step 1: Prove the safety logic on the host (no QNX)
 
 ```sh
 make test
@@ -38,9 +38,9 @@ Checkpoint: the transcript contains lines like
 
 and the summary at the end shows the legacy store above the limit and the protected store at zero case-minutes above the limit.
 
-**Why this matters:** the governor is ordinary C11 with no QNX headers. You can test the safety rules before touching the target.
+The governor is ordinary C11 with no QNX headers, which is why you can test every safety rule here before you go anywhere near the target.
 
-## Step 2 — Build the QNX image and boot two stores
+## Step 2: Build the QNX image and boot two stores
 
 ```sh
 bash docker/setup.sh
@@ -59,7 +59,7 @@ The two VMs get separate forwarded ports:
 
 Checkpoint: `ssh -p 2222 root@127.0.0.1 'uname -a'` prints a QNX 8.0 kernel line, and `scripts/qemu-run.sh ... --stop` shuts a VM down.
 
-## Step 3 — Cross-compile and deploy
+## Step 3: Cross-compile and deploy
 
 ```sh
 scripts/qnx-build.sh target
@@ -77,7 +77,7 @@ ssh -p 2222 root@127.0.0.1 'pidin -f anU | grep -E "mgmtd|governord|casectl|keyc
 
 shows `mgmtd` as uid 1105, `governord` as uid 1103, `casectl` as uid 1102 and `keyconsole` as uid 1108. The priorities in `pidin` should match [ARCHITECTURE.md](ARCHITECTURE.md): `casectl` 40, `governord` 35, `brokerd` 25, `mgmtd` 10.
 
-## Step 4 — Look at the boundary
+## Step 4: Look at the boundary
 
 On the protected store:
 
@@ -89,9 +89,9 @@ pidin -f anU | grep -E 'mgmtd|governord'
 
 Checkpoint: `/dev/coldkeep/gov` is owned by `brokerd`'s uid with mode `0600`, `/dev/coldkeep/broker` by `mgmtd`'s uid, and `keyconsole`'s `/dev/coldkeep/key` is root-only. The management process owns only the broker channel; it does not own the governor or the controllers.
 
-**Why this matters:** on QNX, the file mode and owner decide who can connect at all. The ability check is a second gate on top of that.
+On QNX the file mode and owner decide who can connect at all, and the ability check sits on top of that as a second gate.
 
-## Step 5 — Compromise the web process (A3)
+## Step 5: Compromise the web process (A3)
 
 Still on the protected store, run these as `mgmtd`'s uid 1105:
 
@@ -121,9 +121,9 @@ echo setpoint 30 | dd of=/dev/coldkeep/case/1
 
 Checkpoint: both succeed. The governor paths do not exist on the legacy store.
 
-**Why this matters:** the same code, the same password, the same shell — the only difference is what QNX lets the process open.
+It's the same code and the same password on both stores. What changes is what QNX lets the process open.
 
-## Step 6 — Send the same command from the dashboard
+## Step 6: Send the same command from the dashboard
 
 Start the dashboard and a live relay with management endpoints:
 
@@ -145,12 +145,12 @@ npm run relay -- --store legacy=127.0.0.1:17071 --store protected=127.0.0.1:1707
 Open <http://127.0.0.1:3000/?relay=ws://127.0.0.1:7071> and select **Control**.
 
 1. Click **Setpoint +25 °C**. Checkpoint: the legacy store applies it; the Coldkeep store returns `DENY`, rule `G1`, "far outside band".
-2. Click **24 h defrost**. Checkpoint: the legacy store applies it; Coldkeep returns `CLAMP`, rule `G3`, "max defrost 45 min" — unless the case is inside the 4-hour manual-defrost gap, in which case it returns `DENY G3` with that reason. Both are correct.
+2. Click **24 h defrost**. Checkpoint: the legacy store applies it; Coldkeep returns `CLAMP`, rule `G3`, "max defrost 45 min". If the case is still inside the 4-hour gap between manual defrosts you'll get `DENY G3` with that reason instead, which is also correct.
 3. Click **Alarms off**. Checkpoint: Coldkeep returns `NEEDS_KEY G5`. Open **Key requests**: the request is listed, and there is no approve button.
 
-**Why this matters:** the dashboard is using the same authenticated `mgmtd` API as the attack runner. It gets no privileged path. The verdicts are the target's, not the UI's.
+The dashboard talks to the same authenticated `mgmtd` API as the attack runner and gets no privileged path of its own, so every verdict you see came from the target.
 
-## Step 7 — Approve only at the store
+## Step 7: Approve only at the store
 
 On the protected store, read the queue and approve the request by id:
 
@@ -162,9 +162,9 @@ cat /dev/coldkeep/key
 
 Checkpoint: the request moves from `pending` to `approved`, and the audit ring records the approval with origin `keyconsole`.
 
-**Why this matters:** `keyconsole` is the only process holding `coldkeep.envelope.write`. The network process cannot obtain or forge that ability, so it cannot approve its own request even if it finds a path to the governor.
+Only `keyconsole` holds `coldkeep.envelope.write`. The network process can't obtain or forge that ability, so even if it found a path to the governor it still couldn't approve its own request.
 
-## Step 8 — Crash and freeze the governor (A4)
+## Step 8: Crash and freeze the governor (A4)
 
 ```sh
 slay -s KILL governord; sleep 1
@@ -182,9 +182,9 @@ grep -e 'G6 hold' -e 'G6 released' /dev/coldkeep/audit
 
 Checkpoint: all 8 cases log a G6 hold, then a release. In the recorded runs the first hold appeared about 2.18 s after the freeze (heartbeat timeout 2 s).
 
-**Why this matters:** a governor that is only correct while running is not a safety control. Persisted state and controller-side G6 close the "just crash it" and "just freeze it" attacks.
+A governor that's only correct while it's running isn't much of a safety control. Persisting its state shuts the "just crash it" attack, and G6 in the controllers shuts "just freeze it".
 
-## Step 9 — Record your own comparison
+## Step 9: Record your own comparison
 
 ```sh
 scripts/run-compare.py --label mylab

@@ -1,6 +1,6 @@
 # Plant model
 
-**Illustrative, not engineering-grade.** The model exists so that the legacy and protected stores can be compared under the same physics, seed and attack. Only qualitative conclusions should be drawn from it. Code: [`core/thermal.c`](../core/thermal.c).
+**Illustrative, not engineering-grade.** The model is there so the legacy and protected stores face the same physics, seed and attack; don't draw anything more than qualitative conclusions from it. Code: [`core/thermal.c`](../core/thermal.c).
 
 ## Equations (per case, explicit Euler, dt = 0.1 s in sim-host, 1 s in property tests)
 
@@ -13,7 +13,7 @@ eff    = 1 / (1 + ice / ice_ref)           frost insulates the coil
 dT_prod/dt = k_prod·(T_air − T_prod)
 ```
 
-**Frost.** Frost (`ice`, stored as latent heat in J) grows at `ice_grow` while the compressor runs with the coil below 0 °C. When heat would take the coil above 0 °C with frost present, the surplus melts frost first. So a normal defrost spends its energy on ice, not on the food. Chilled coils also clear frost during compressor-off periods (as medium-temperature cases do); frozen coils do not, so skipping defrost slowly degrades cooling there.
+**Frost.** Frost (`ice`, stored as latent heat in J) grows at `ice_grow` while the compressor runs with the coil below 0 °C. When heat would take the coil above 0 °C with frost present, the surplus melts frost first. That's why a normal defrost spends its energy on ice rather than on the food. Chilled coils also clear frost during compressor-off periods (as medium-temperature cases do); frozen coils do not, so skipping defrost slowly degrades cooling there.
 
 Modelling the coil separately from the air is what lets *terminated* defrosts be gentle while *forced* defrosts are dangerous.
 
