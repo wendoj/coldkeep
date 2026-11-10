@@ -1,0 +1,57 @@
+COLDKEEP live Control and key-approval check (manual; not part of the five measured runs)
+Date: 2026-11-10
+Platform: QNX 8.0 x86_64 in QEMU (store-a = protected, slot 0; store-b = legacy, slot 1),
+          freshly booted, deployed with scripts/deploy.sh (seed 7, speed 30x)
+Target binaries: built from target/ and core/ as last changed in c47a60d (includes keyconsole)
+Host: relay and dashboard at ff746f2
+
+Relay:
+  npm run relay -- --store legacy=127.0.0.1:17071 --store protected=127.0.0.1:17070 \
+                   --mgmt legacy=127.0.0.1:18081 --mgmt protected=127.0.0.1:18080
+  hello: {"kind":"hello","source":"live","stores":["legacy","protected"],
+          "can":{"playback":false,"sim":false,"live":["A1","A2"],"control":["legacy","protected"]}}
+
+== 1. Dashboard command messages -> relay -> mgmtd (-> brokerd -> governord on protected)
+Sent over the relay WebSocket as {"kind":"command",...}, the message the Control view sends.
+Replies are mgmtd's, echoed by the relay as command_result.
+
+legacy    set_setpoint  case 1 value 28     -> {"ok":true,"verdict":"ALLOW","rule":"LEGACY","applied":28,"reason":"legacy: applied directly"}
+legacy    start_defrost case 1 86400 s      -> {"ok":true,"verdict":"ALLOW","rule":"LEGACY","applied":86400,"reason":"legacy: applied directly"}
+legacy    disable_alarms                    -> {"ok":true,"verdict":"ALLOW","rule":"LEGACY","applied":0,"reason":"legacy: applied directly"}
+protected set_setpoint  case 1 value 28     -> {"ok":true,"verdict":"DENY","rule":"G1","applied":null,"reason":"setpoint 28.0 far outside band 0.0..5.0"}
+protected start_defrost case 1 86400 s      -> {"ok":true,"verdict":"CLAMP","rule":"G3","applied":2700,"reason":"max defrost 45 min"}
+protected disable_alarms                    -> {"ok":true,"verdict":"NEEDS_KEY","rule":"G5","applied":null,"reason":"dangerous: queued as key request #1"}
+
+== 2. Same presets clicked in the dashboard Control view (headless Chromium, /control, Target: Both)
+Second pass on the same stores, so case 1 was already defrosting:
+
+Setpoint +25 C  legacy APPLIED            protected DENIED G1
+24 h defrost    legacy FAILED (*)         protected DENIED G3 (manual defrost too recent)
+Alarms off      legacy APPLIED            protected NEEDS KEY G5, "queued at the store console"
+Key requests view: 0 approve buttons.
+
+(*) mgmtd reply: {"verdict":"DENY","rule":"LEGACY","reason":"legacy: controller refused: Resource busy"}
+    The legacy controller refuses a second defrost while case 1 is still in the first 24 h one.
+    The same command to case 2 was applied (ALLOW, applied 86400).
+
+== 3. G5 approval at the protected store's local console
+# ls -l /dev/coldkeep/key
+nrw-------  1 root root 0 2026-11-10 18:02 /dev/coldkeep/key
+# cat /dev/coldkeep/key
+# key requests (write "approve <id>" or "reject <id>" here)
+#1 t=1405 pending  disable_alarms case=0 value=0.0 from mgmt/admin
+# on -u 1105 sh -c "echo approve 1 > /dev/coldkeep/key"          (mgmtd's uid)
+sh: cannot create /dev/coldkeep/key: Permission denied
+# echo "approve 1" > /dev/coldkeep/key                             (root, at the console)
+# cat /dev/coldkeep/key
+# key requests (write "approve <id>" or "reject <id>" here)
+#1 t=1405 approved disable_alarms case=0 value=0.0 from mgmt/admin -> ALLOW G5 alarms disabled with store key
+# grep -i -e key -e alarm /dev/coldkeep/audit
+#7 t=1405 event key request #1 queued: disable_alarms case=0 from mgmt/admin; approve at the local console
+#8 t=1405 mgmt/admin disable_alarms case=0 value=0.0 -> NEEDS_KEY G5 dangerous: queued as key request #1
+#9 t=1791 keyconsole/admin disable_alarms case=0 value=0.0 -> ALLOW G5 alarms disabled with store key
+#10 t=1791 event key request #1 approved at the local console: ALLOW G5 alarms disabled with store key
+
+== 4. Abilities (pidin -p <pid> abilities, protected store)
+mgmtd      standard abilities R-L- ; coldkeep.envelope.write --L- ; coldkeep.plant.write --L-
+governord  coldkeep.envelope.write ---- ; coldkeep.plant.write -NL-

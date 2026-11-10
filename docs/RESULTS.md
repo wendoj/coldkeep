@@ -18,7 +18,8 @@ Run settings:
   - A2 from t = 1150 s (15 s wall quiet, then 15 s wall flood);
   - A3 at t = 2100 s;
   - A4 at t = 2700 s.
-- **Commit:** c7b425c.
+- **Commit:** c7b425c. This is the commit the five runs were recorded from; later work
+  (including `keyconsole`, commit 97d2178) is not part of these measurements.
 
 Values are mean (min–max) over the 5 runs. The raw files are in [evidence/runs/](evidence/runs/).
 
@@ -73,13 +74,13 @@ How the measurement works:
 | Ticks with jitter ≥ 20 ms, %, quiet | 0.00 (0.00–0.01) | 0.00 |
 | Ticks with jitter ≥ 20 ms, %, flood | 0.01 (0.00–0.06) | 0.00 (0.00–0.02) |
 
-The flood did not increase control-loop jitter in either store. `casectl` runs at priority 40 and `mgmtd` at 10, and the legacy store uses the same priorities. So this result shows QNX priority scheduling protecting the loop. It does not show a difference between the two architectures.
+The flood didn't increase control-loop jitter in either store. `casectl` runs at priority 40 and `mgmtd` at 10 in both, so what this shows is QNX priority scheduling protecting the loop, not a difference between the two architectures.
 
-The share of ticks with jitter ≥ 1 ms (39–87 % in both windows, both stores) is high and varies from run to run. The likely reason is the emulated timer: the controller period is 3.33 ms at 30× and the system tick is 1 ms. Treat absolute jitter here as a property of the emulator, not of QNX on real hardware.
+The share of ticks with jitter ≥ 1 ms (39–87 % in both windows, both stores) is high and varies from run to run. We think the emulated timer explains it, since the controller period is 3.33 ms at 30× and the system tick is 1 ms; treat the absolute jitter here as a property of the emulator rather than of QNX on real hardware.
 
 ### A4: governor crash and hang (protected store; the legacy store has no governor)
 
-`sup` (target/sup) runs `casectl` ×8, `keyconsole`, `governord`, `brokerd` and `mgmtd`. It restarts any of them that dies, and it measures the time until the restarted process's resource manager is attached. QNX's High Availability Manager is not in the image ([QNX_FEATURES.md](QNX_FEATURES.md)).
+`sup` (target/sup) runs `casectl` ×8, `governord`, `brokerd` and `mgmtd` (and `keyconsole` in later builds, not in these runs). It restarts any of them that dies, and it measures the time until the restarted process's resource manager is attached. QNX's High Availability Manager is not in the image ([QNX_FEATURES.md](QNX_FEATURES.md)).
 
 | Metric | COLDKEEP |
 |---|---|
@@ -91,9 +92,24 @@ The share of ticks with jitter ≥ 1 ms (39–87 % in both windows, both stores)
 
 During the freeze the controllers kept their last-known-good configuration and refused to start a defrost (G6). In all five runs no case went above its limit.
 
+## Live check: dashboard Control path and G5 approval (manual, not a measured run)
+
+The five runs above show `disable_alarms` reaching `NEEDS_KEY`, but none includes an approval: they were recorded before `keyconsole`. The dashboard's Control path (browser → relay → `mgmtd` → `brokerd` → `governord`) and the approval at the store console were checked by hand on freshly deployed QEMU stores on 2026-11-10. This is a single functional check, not a measurement, and adds nothing to the tables above. Transcript: [evidence/live-control-check.txt](evidence/live-control-check.txt).
+
+| Request, sent to both stores from Control | Legacy | COLDKEEP |
+|---|---|---|
+| Setpoint +25 °C on case 1 | ALLOW (applied) | DENY G1 |
+| 24 h defrost on case 1 | ALLOW (86400 s) | CLAMP G3 (2700 s) |
+| Disable alarms | ALLOW | NEEDS_KEY G5 (key request #1) |
+
+- As `mgmtd`'s uid 1105, writing `approve 1` to `/dev/coldkeep/key` failed with `Permission denied`.
+- As root at the store console, `approve 1` was accepted. The audit journal records `keyconsole/admin disable_alarms -> ALLOW G5 alarms disabled with store key`.
+- The dashboard's Key requests view showed no approve button.
+- Repeating the 24 h defrost on the same case gave `DENY G3` on COLDKEEP (manual defrost too recent) and a legacy controller refusal (`Resource busy`, case already defrosting).
+
 ## Host simulator runs (labelled; not QNX measurements)
 
-Produced by `./sim-host/ck-sim --scenario scenarios/demo-main.yaml --mode both` (seed 7) and committed as `tests/golden/demo-main.*.jsonl`. They show the logic, not QNX's enforcement. The A3 errnos there come from a host model.
+Produced by `./sim-host/ck-sim --scenario scenarios/demo-main.yaml --mode both` (seed 7) and committed as `tests/golden/demo-main.*.jsonl`. They show the logic working, not QNX enforcing it, and their A3 errnos come from a host model.
 
 | Metric (demo-main, seed 7, 3600 sim-s) | Legacy | COLDKEEP |
 |---|---|---|
