@@ -138,19 +138,126 @@ export const Event = z.discriminatedUnion("type", [
 export type Event = z.infer<typeof Event>;
 export type EventOf<T extends Event["type"]> = Extract<Event, { type: T }>;
 
+/** Attack campaigns (docs/THREAT_MODEL.md). */
+export const Campaign = z.enum(["A1", "A2", "A3", "A4"]);
+export type Campaign = z.infer<typeof Campaign>;
+
+/** Playback rate in sim-seconds per wall-second, or "max" (as fast as possible). */
+export const Rate = z.union([z.number().positive().max(100000), z.literal("max")]);
+export type Rate = z.infer<typeof Rate>;
+
+/**
+ * The management commands a dashboard operator may send to a live target.
+ * This is deliberately the operator subset of core/proto.c: login, status,
+ * debug_exec, envelope changes, defrost-schedule changes and raw writes are not
+ * reachable from the dashboard at all. Every command is still decided by the
+ * governor.
+ */
+export const OperatorOp = z.enum([
+  "set_setpoint",
+  "start_defrost",
+  "stop_defrost",
+  "set_fans",
+  "disable_alarms",
+]);
+export type OperatorOp = z.infer<typeof OperatorOp>;
+
+export const CommandArgs = z.object({
+  case: z.number().int().min(0).max(65535).optional(),
+  value: z.number().finite().optional(),
+  seconds: z.number().int().min(1).max(7 * 86400).optional(),
+  on: z.boolean().optional(),
+});
+export type CommandArgs = z.infer<typeof CommandArgs>;
+
+/** mgmtd's reply to one command (a decision in protected mode, an application in legacy). */
+export const CommandReply = z.looseObject({
+  ok: z.boolean(),
+  id: z.number().optional(),
+  cmd: z.string().optional(),
+  case: z.number().optional(),
+  verdict: Verdict.optional(),
+  rule: z.string().optional(),
+  applied: z.number().nullable().optional(),
+  reason: z.string().optional(),
+  error: z.string().optional(),
+});
+export type CommandReply = z.infer<typeof CommandReply>;
+
+/**
+ * What the relay can do on request from a dashboard:
+ *  - playback: pause, resume, restart and change the rate of a replay or simulator run;
+ *  - sim: run a new comparison in the host simulator with chosen campaigns and seed;
+ *  - live: send campaigns to the real targets' management API (only those listed);
+ *  - control: send individual operator commands to these stores' mgmtd.
+ *    Absent on older relays, and in replay/simulator mode.
+ */
+export const Capabilities = z.object({
+  playback: z.boolean(),
+  sim: z.boolean(),
+  live: z.array(Campaign),
+  control: z.array(Mode).optional(),
+});
+export type Capabilities = z.infer<typeof Capabilities>;
+
+export const RunState = z.object({
+  state: z.enum(["running", "done", "error"]),
+  target: z.enum(["sim", "live"]),
+  campaigns: z.array(Campaign),
+  seed: z.number().int().optional(),
+  detail: z.string().optional(),
+});
+export type RunState = z.infer<typeof RunState>;
+
 /** Relay -> dashboard WebSocket messages. */
 export const RelayMessage = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("hello"),
-    source: z.enum(["live", "replay"]),
+    source: z.enum(["live", "replay", "sim"]),
     stores: z.array(Mode),
     files: z.array(z.string()).optional(),
+    can: Capabilities.optional(),
   }),
   z.object({ kind: z.literal("event"), store: Mode, event: Event }),
   z.object({ kind: z.literal("status"), store: Mode, connected: z.boolean(), detail: z.string().optional() }),
   z.object({ kind: z.literal("end"), store: Mode }),
+  z.object({ kind: z.literal("playback"), paused: z.boolean(), rate: Rate, done: z.boolean() }),
+  z.object({ kind: z.literal("run"), run: RunState }),
+  z.object({
+    kind: z.literal("command_result"),
+    id: z.string(),
+    store: Mode,
+    op: OperatorOp,
+    args: CommandArgs,
+    /** wall-clock epoch ms, so the UI can show "just now" without a sim clock */
+    at: num,
+    reply: CommandReply,
+  }),
+  z.object({ kind: z.literal("log"), text: z.string() }),
 ]);
 export type RelayMessage = z.infer<typeof RelayMessage>;
+
+/** Dashboard -> relay requests. The relay only accepts these; anything else is ignored. */
+export const ClientMessage = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("run"),
+    target: z.enum(["sim", "live"]),
+    campaigns: z.array(Campaign).min(1).max(4),
+    seed: z.number().int().min(0).max(2 ** 31).optional(),
+    rate: Rate.optional(),
+  }),
+  z.object({ kind: z.literal("playback"), action: z.enum(["pause", "resume", "restart"]) }),
+  z.object({ kind: z.literal("rate"), rate: Rate }),
+  z.object({
+    kind: z.literal("command"),
+    /** client-generated, echoed on command_result so the UI can match pending rows */
+    id: z.string().min(1).max(64),
+    store: Mode,
+    op: OperatorOp,
+    args: CommandArgs.default({}),
+  }),
+]);
+export type ClientMessage = z.infer<typeof ClientMessage>;
 
 /** Parse one JSONL line; returns null (with the zod error) for lines that don't match. */
 export function parseLine(line: string): { event: Event } | { error: string } {

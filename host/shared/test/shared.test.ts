@@ -2,7 +2,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Event, RelayMessage, StoreModel, computeReadouts, complianceCsv, parseAuditText, parseLine } from "../src";
+import { ClientMessage, Event, RelayMessage, StoreModel, computeReadouts, complianceCsv, parseAuditText, parseLine } from "../src";
 
 const ROOT = join(import.meta.dirname, "../../..");
 const recordings = [
@@ -53,6 +53,38 @@ describe("schemas", () => {
     expect(RelayMessage.safeParse({ kind: "hello", source: "replay", stores: ["legacy", "protected"] }).success).toBe(true);
     expect(RelayMessage.safeParse({ kind: "event", store: "legacy", event: { type: "note", t: 1, text: "x" } }).success).toBe(true);
     expect(RelayMessage.safeParse({ kind: "event", store: "both", event: { type: "note", t: 1, text: "x" } }).success).toBe(false);
+  });
+
+  it("operator commands round-trip, and only operator commands are accepted", () => {
+    const command = ClientMessage.safeParse({
+      kind: "command", id: "abc", store: "protected",
+      op: "set_setpoint", args: { case: 1, value: 4.5 },
+    });
+    expect(command.success).toBe(true);
+    // A dashboard can never reach login/status/debug_exec, or the attacker-only writes,
+    // through this message.
+    for (const op of ["login", "status", "debug_exec", "change_envelope", "set_defrost_schedule", "raw_write"])
+      expect(ClientMessage.safeParse({ kind: "command", id: "abc", store: "protected", op, args: {} }).success).toBe(false);
+    expect(ClientMessage.safeParse({ kind: "command", id: "abc", store: "both", op: "set_setpoint", args: { case: 1 } }).success).toBe(false);
+    expect(ClientMessage.safeParse({ kind: "command", id: "", store: "legacy", op: "stop_defrost", args: { case: 2 } }).success).toBe(false);
+
+    const result = RelayMessage.safeParse({
+      kind: "command_result", id: "abc", store: "protected", op: "set_setpoint",
+      args: { case: 1, value: 4.5 }, at: 1_700_000_000_000,
+      reply: { ok: true, verdict: "DENY", rule: "G1", reason: "far outside band", applied: null },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("capabilities may be absent on older relays and may list control stores", () => {
+    expect(RelayMessage.safeParse({ kind: "hello", source: "replay", stores: [], can: { playback: true, sim: false, live: [] } }).success).toBe(true);
+    expect(RelayMessage.safeParse({
+      kind: "hello", source: "live", stores: ["protected"],
+      can: { playback: false, sim: false, live: ["A1"], control: ["protected"] },
+    }).success).toBe(true);
+    expect(RelayMessage.safeParse({
+      kind: "hello", source: "live", stores: [], can: { playback: false, sim: false, live: [], control: ["both"] },
+    }).success).toBe(false);
   });
 });
 
