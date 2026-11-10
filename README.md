@@ -8,7 +8,11 @@ In October and November 2026, attackers got into supermarket refrigeration acros
 
 COLDKEEP turns that around by assuming the network-facing management process, `mgmtd`, is already compromised. A separate high-priority **safety governor** is the only process allowed to command the plant, and no remote command can push it outside its food-safe envelope. QNX holds the two apart: `mgmtd` runs with every ability denied and locked, the case controllers only accept writes from the holder of a custom ability that only the governor keeps, and file ownership decides who can open each service's channel in the first place.
 
-*"An attacker with the admin password, and even with code running inside the web server, still can't make COLDKEEP's food unsafe, because QNX won't let them near the cold."*
+*"An attacker with the admin password, and even with code running inside the web server, still can't make COLDKEEP's food unsafe, because QNX won't let them."*
+
+## Demo video
+
+[![COLDKEEP demo](docs/img/demo-thumbnail.jpg)](https://youtu.be/SToC72QLFas)
 
 ## Results
 
