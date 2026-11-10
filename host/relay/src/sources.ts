@@ -88,39 +88,74 @@ export function loadRecording(path: string): ReplayFile {
 const eventTime = (ev: Event): number | null => ("t" in ev && typeof ev.t === "number" ? ev.t : null);
 
 /**
- * Replay recordings together on one sim clock: `rate` sim-seconds per wall second
+ * Replays recordings together on one sim clock: `rate` sim-seconds per wall second
  * (Infinity = as fast as possible). meta goes first, summary when the file ends.
+ * Can be paused, resumed and re-rated while it runs.
  */
-export function replaySource(files: ReplayFile[], rate: number, sink: Sink, tickMs = 50): () => void {
-  const queues = files.map((f) => ({ f, i: 0 }));
-  for (const q of queues) {
-    sink.status(q.f.store, true, `replay ${q.f.path}`);
-    while (q.i < q.f.events.length && eventTime(q.f.events[q.i]!) === null) sink.event(q.f.store, q.f.events[q.i++]!);
+export class Playback {
+  private queues: { f: ReplayFile; i: number }[];
+  private simNow: number;
+  private timer: NodeJS.Timeout | null = null;
+  paused = false;
+  done = false;
+
+  constructor(
+    files: ReplayFile[],
+    public rate: number,
+    private sink: Sink,
+    private tickMs = 50,
+    private onDone?: () => void,
+  ) {
+    this.queues = files.map((f) => ({ f, i: 0 }));
+    for (const q of this.queues) {
+      sink.status(q.f.store, true, `replay ${q.f.path}`);
+      while (q.i < q.f.events.length && eventTime(q.f.events[q.i]!) === null) sink.event(q.f.store, q.f.events[q.i++]!);
+    }
+    this.simNow = Math.min(...files.map((f) => f.events.map(eventTime).find((t): t is number => t !== null) ?? 0));
+    this.timer = setInterval(() => this.step(), tickMs);
+    this.step();
   }
-  const t0 = Math.min(
-    ...files.map((f) => f.events.map(eventTime).find((t): t is number => t !== null) ?? 0),
-  );
-  let simNow = t0;
-  const step = () => {
-    simNow = rate === Infinity ? Infinity : simNow + (rate * tickMs) / 1000;
+
+  private step() {
+    if (this.paused || this.done) return;
+    this.simNow = this.rate === Infinity ? Infinity : this.simNow + (this.rate * this.tickMs) / 1000;
     let done = true;
-    for (const q of queues) {
+    for (const q of this.queues) {
       while (q.i < q.f.events.length) {
         const ev = q.f.events[q.i]!;
         const t = eventTime(ev);
-        if (t !== null && t > simNow) break;
-        sink.event(q.f.store, ev);
+        if (t !== null && t > this.simNow) break;
+        this.sink.event(q.f.store, ev);
         q.i++;
       }
       if (q.i < q.f.events.length) done = false;
       else if (q.i === q.f.events.length) {
-        sink.end(q.f.store);
+        this.sink.end(q.f.store);
         q.i++;
       }
     }
-    if (done) clearInterval(timer);
-  };
-  const timer = setInterval(step, tickMs);
-  step();
-  return () => clearInterval(timer);
+    if (done) {
+      this.done = true;
+      this.stop();
+      this.onDone?.();
+    }
+  }
+
+  pause() {
+    this.paused = true;
+  }
+
+  resume() {
+    this.paused = false;
+  }
+
+  stop() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+}
+
+export function replaySource(files: ReplayFile[], rate: number, sink: Sink, tickMs = 50): () => void {
+  const p = new Playback(files, rate, sink, tickMs);
+  return () => p.stop();
 }
