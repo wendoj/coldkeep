@@ -10,8 +10,12 @@ export type Status = z.infer<typeof Status>;
 
 export const Reply = z.looseObject({
   ok: z.boolean(),
+  id: z.number().optional(),
+  cmd: z.string().optional(),
+  case: z.number().optional(),
   verdict: z.string().optional(),
   rule: z.string().optional(),
+  applied: z.number().nullable().optional(),
   reason: z.string().optional(),
   error: z.string().optional(),
 });
@@ -62,20 +66,32 @@ export class MgmtClient {
   }
 
   /** Send one request and wait for its reply line. */
-  request(obj: object): Promise<unknown> {
+  request(obj: object, timeoutMs = 30000): Promise<unknown> {
     const s = this.sock;
     if (!s) return Promise.reject(new Error("not connected"));
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("reply timeout")), 30000);
-      this.waiting.push((line) => {
+      const waiter = (line: string) => {
         clearTimeout(timer);
         try {
           resolve(JSON.parse(line));
         } catch (e) {
           reject(e);
         }
+      };
+      const timer = setTimeout(() => {
+        // Drop the waiter, or every later reply would be matched one request too early.
+        const i = this.waiting.indexOf(waiter);
+        if (i >= 0) this.waiting.splice(i, 1);
+        reject(new Error("reply timeout"));
+      }, timeoutMs);
+      this.waiting.push(waiter);
+      s.write(JSON.stringify(obj) + "\n", (err) => {
+        if (!err) return;
+        clearTimeout(timer);
+        const i = this.waiting.indexOf(waiter);
+        if (i >= 0) this.waiting.splice(i, 1);
+        reject(err);
       });
-      s.write(JSON.stringify(obj) + "\n");
     });
   }
 
@@ -99,7 +115,7 @@ export class MgmtClient {
     return Status.parse(await this.request({ op: "status" }));
   }
 
-  async command(op: string, args: Record<string, number> = {}): Promise<Reply> {
+  async command(op: string, args: Record<string, number | boolean> = {}): Promise<Reply> {
     return Reply.parse(await this.request({ op, ...args }));
   }
 
