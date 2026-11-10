@@ -4,7 +4,43 @@
 // read from the model, which is built only from recorded or live events.
 import type { CaseRun, CaseType, Decision, Mode, StoreModel } from "@coldkeep/shared";
 import { computeReadouts } from "@coldkeep/shared";
-import type { Series } from "@/components/TempChart";
+
+export interface Series {
+  store: Mode;
+  points: { t: number; v: number }[];
+}
+
+export const CASE_TYPE_LABEL: Record<CaseType, string> = { chilled: "Chilled multideck", frozen: "Frozen well", coldroom: "Walk-in cold room" };
+
+/** Rule names as docs/RULES.md shows them in the UI. */
+export const RULE_NAME: Record<string, string> = {
+  G1: "Setpoint band",
+  G2: "Rate limit",
+  G3: "Defrost envelope",
+  G4: "Product-temperature override",
+  G5: "Needs the store key",
+  G6: "Fail-safe hold",
+};
+
+/** Both stores' series on one time axis, for a chart with one column per store. */
+export function mergeSeries(series: Series[]): { t: number; legacy?: number; protected?: number }[] {
+  const rows = new Map<number, { t: number; legacy?: number; protected?: number }>();
+  for (const s of series) {
+    for (const p of s.points) {
+      const row = rows.get(p.t) ?? { t: p.t };
+      row[s.store] = p.v;
+      rows.set(p.t, row);
+    }
+  }
+  return [...rows.values()].sort((a, b) => a.t - b.t);
+}
+
+/** Rules a store's governor used, most frequent first (LEGACY and ALLOW without a rule are left out). */
+export function ruleCounts(s: StoreModel): { rule: string; n: number }[] {
+  const m = new Map<string, number>();
+  for (const d of s.decisions) if (/^G\d$/.test(d.rule)) m.set(d.rule, (m.get(d.rule) ?? 0) + 1);
+  return [...m].map(([rule, n]) => ({ rule, n })).sort((a, b) => b.n - a.n || a.rule.localeCompare(b.rule));
+}
 
 /** G4 warning thresholds from the default envelope (docs/RULES.md). */
 export const WARN_C: Record<CaseType, number> = { chilled: 6, frozen: -19, coldroom: 4 };
@@ -79,7 +115,7 @@ export function incidentReport(s: StoreModel): string {
   const r = computeReadouts(s);
   const m = s.meta;
   const lines = [
-    `# COLDKEEP incident report: ${s.mode} store`,
+    `# Coldkeep incident report: ${s.mode} store`,
     "",
     `- Source: ${m?.source ?? "unknown"}${m?.label ? ` (${m.label})` : ""}${m?.git ? `, commit ${m.git}` : ""}`,
     `- Seed ${m?.seed ?? "?"}, speed ${m?.speed ?? "?"}x, last sample at sim t=${s.t.toFixed(0)} s`,

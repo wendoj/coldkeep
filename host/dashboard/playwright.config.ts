@@ -19,6 +19,12 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
+      // host simulator: the dashboard can run attacks against this one
+      command: "npx tsx ../relay/src/main.ts --port 7182 --rate max",
+      url: "http://127.0.0.1:7182",
+      reuseExistingServer: false,
+    },
+    {
       command: "npx next start -p 3100 -H 127.0.0.1",
       url: "http://127.0.0.1:3100",
       reuseExistingServer: false,

@@ -1,34 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CircleAlert, CircleCheck, OctagonX } from "lucide-react";
 import type { CaseStatus } from "@/lib/derive";
+import { cn } from "@/lib/utils";
 
 const LABEL: Record<CaseStatus, string> = { ok: "In range", warn: "Warning", over: "Over limit" };
+const ICON = { ok: CircleCheck, warn: CircleAlert, over: OctagonX } as const;
+const COLOR: Record<CaseStatus, string> = { ok: "text-good-ink", warn: "text-warn-ink", over: "text-critical-ink" };
 
 /** Status is never colour alone: icon + label + colour. */
-export function StatusBadge({ status }: { status: CaseStatus }) {
+export function StatusBadge({ status, compact = false }: { status: CaseStatus; compact?: boolean }) {
+  const Icon = ICON[status];
   return (
-    <span className="status" data-status={status}>
-      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-        {status === "ok" && (
-          <>
-            <circle cx="7" cy="7" r="6.5" fill="var(--good)" />
-            <path d="M4 7.2l2 2 4-4.4" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          </>
-        )}
-        {status === "warn" && (
-          <>
-            <path d="M7 1l6.3 11.5H.7z" fill="var(--warning)" />
-            <path d="M7 5v3.6" stroke="#0b0b0b" strokeWidth="1.6" strokeLinecap="round" />
-            <circle cx="7" cy="10.6" r="0.9" fill="#0b0b0b" />
-          </>
-        )}
-        {status === "over" && (
-          <>
-            <rect x="0.5" y="0.5" width="13" height="13" rx="3" fill="var(--critical)" />
-            <path d="M4.3 4.3l5.4 5.4M9.7 4.3l-5.4 5.4" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
-          </>
-        )}
-      </svg>
-      {LABEL[status]}
+    <span className={cn("inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.04rem] whitespace-nowrap uppercase", COLOR[status])} data-status={status}>
+      <Icon className="icon-regular size-3" aria-hidden />
+      <span className={cn(compact && "sr-only")}>{LABEL[status]}</span>
     </span>
   );
 }
+
+export const STATUS_BAR: Record<CaseStatus, string> = { ok: "bg-good", warn: "bg-warn", over: "bg-critical" };

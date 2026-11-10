@@ -4,61 +4,57 @@
 // Key requests: dangerous changes the governor queued (G5). The dashboard shows
 // them but cannot approve them: approval happens at the store's local console, so
 // a compromised network path can never approve its own request.
+import { Card, PageHeader, Pill } from "@/components/kit";
 import { Waiting } from "@/components/Shell";
 import { fmtSim, useRelay } from "@/lib/relay";
+
+const th = "mono-label px-4 py-2 text-left font-normal whitespace-nowrap";
+const td = "px-4 py-2.5";
 
 export default function KeysPage() {
   const r = useRelay();
   const s = r.stores.protected;
-  if (!s) return <Waiting what="the COLDKEEP store" />;
+  if (!s) return <Waiting what="the Coldkeep store" />;
   const reqs = s.keyRequests;
+  const pending = reqs.filter((d) => s.keyState(d) === "pending").length;
+
   return (
-    <>
-      <section className="panel">
-        <div className="panel-head">
-          <h1>Key requests</h1>
-          <span className="sub">COLDKEEP store</span>
-        </div>
-        <p className="callout" style={{ margin: 0 }}>
-          <b>Approve at the store&apos;s local console.</b> These requests can only be approved with the store key
-          on site. This dashboard is on the network, so it has no approve button by design.
-        </p>
-      </section>
-      <section className="panel">
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Key requests" actions={<span className="mono-label">{pending} pending</span>} />
+      <p className="text-sm text-muted-foreground">Approved only at the store&apos;s local console.</p>
+
+      <Card title="Queue" actions={<span className="mono-label">{reqs.length} total</span>} bodyClassName="p-0">
         {reqs.length === 0 ? (
-          <div className="empty">No pending key requests.</div>
+          <p className="p-4 text-sm text-muted-foreground">No key requests.</p>
         ) : (
-          <div className="table-wrap">
-            <table data-testid="key-requests">
-              <thead><tr><th>Sim t</th><th>Requested by</th><th>Change</th><th>Status</th></tr></thead>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="key-requests">
+              <thead><tr className="border-b"><th className={th}>Time</th><th className={th}>Requested by</th><th className={th}>Change</th><th className={th}>Status</th></tr></thead>
               <tbody>
-                {reqs.map((d, i) => (
-                  <tr key={i}>
-                    <td className="num">{fmtSim(d.t)}</td>
-                    <td>{d.user ?? "—"} via {d.origin ?? "mgmt"}</td>
-                    <td className="mono">{d.cmd}{d.case ? ` case=${d.case}` : ""}</td>
-                    <td data-testid="key-state">
-                      {s.keyState(d) === "pending" ? (
-                        <>pending · <b>approve at the store&apos;s local console</b></>
-                      ) : (
-                        <b>{s.keyState(d)} at the store&apos;s local console</b>
-                      )}
-                      <div className="reason">{d.reason}</div>
-                    </td>
-                  </tr>
-                ))}
+                {reqs.map((d, i) => {
+                  const st = s.keyState(d);
+                  return (
+                    <tr key={i} className="border-b align-top last:border-0">
+                      <td className={`${td} num font-mono text-xs text-muted-foreground`}>{fmtSim(d.t)}</td>
+                      <td className={td}>{d.user ?? "—"} <span className="text-muted-foreground">via {d.origin ?? "mgmt"}</span></td>
+                      <td className={`${td} font-mono text-xs`}>{d.cmd}{d.case ? ` case=${d.case}` : ""}</td>
+                      <td className={td} data-testid="key-state">
+                        <Pill tone={st === "pending" ? "key" : st === "approved" ? "good" : "neutral"}>{st}</Pill>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-      </section>
+      </Card>
+
       {s.govStatus && (
-        <section className="panel">
-          <h2 style={{ marginBottom: 12 }}>Governor status <span className="muted" style={{ fontWeight: 400 }}>(/dev/coldkeep/status)</span></h2>
-          <pre className="status-text">{s.govStatus}</pre>
-        </section>
+        <Card title="Governor status" bodyClassName="p-0">
+          <pre className="overflow-x-auto p-4 font-mono text-xs leading-5">{s.govStatus}</pre>
+        </Card>
       )}
-      <p className="muted" style={{ fontSize: 12 }}>Last update at sim {fmtSim(s.t)}.</p>
-    </>
+    </div>
   );
 }
