@@ -1,7 +1,5 @@
 # Results
 
-**Only numbers from this file may appear in the README, UI copy or video**.
-
 ## QNX target runs (A1–A4)
 
 Five comparison runs, recorded with `scripts/run-compare.py --label qemu-a1a4-runN` and summarised with `scripts/summarize-runs.py docs/evidence/runs/qemu-a1a4-run` (output: [qemu-a1a4-summary.md](evidence/runs/qemu-a1a4-summary.md)). Both stores run at the same time, each on its own QEMU instance:
