@@ -1,14 +1,14 @@
 # COLDKEEP
 
-**A QNX 8.0 refrigeration supervisor that a hacker cannot make unsafe, even after fully compromising its web interface.**
+**A QNX 8.0 refrigeration supervisor that stays food-safe even after someone fully compromises its web interface.**
 
-> **Disclaimer.** COLDKEEP is a defensive research prototype built for a hackathon. It uses a simulated refrigeration plant, is not certified for food-safety or industrial use, and does not describe or reproduce any real-world exploit. The "attacker" in the demo is a script that already holds valid admin credentials.
+> **Disclaimer.** COLDKEEP is a defensive research prototype built for a hackathon. The refrigeration plant is simulated, nothing here is certified for food-safety or industrial use, and it doesn't describe or reproduce any real-world exploit; the "attacker" in the demo is a script that already holds valid admin credentials.
 
-In October and November 2026, attackers reached supermarket refrigeration across Europe through internet-exposed management interfaces with default passwords. The core flaw: **whoever controls the management interface controls the cold.**
+In October and November 2026, attackers got into supermarket refrigeration across Europe through management interfaces left on the internet with default passwords (sources at the end). The underlying problem is that **whoever controls the management interface controls the cold.**
 
-COLDKEEP is built the other way round. The network-facing management process (`mgmtd`) is assumed compromised. A separate, high-priority **safety governor** is the only process allowed to command the plant, and it enforces a food-safe envelope that no remote command can override. QNX enforces the separation: `mgmtd` runs with every ability denied and locked, only the governor holds the custom ability the case controllers require, and file ownership decides who can even open each service's channel.
+COLDKEEP turns that around by assuming the network-facing management process, `mgmtd`, is already compromised. A separate high-priority **safety governor** is the only process allowed to command the plant, and no remote command can push it outside its food-safe envelope. QNX holds the two apart: `mgmtd` runs with every ability denied and locked, the case controllers only accept writes from the holder of a custom ability that only the governor keeps, and file ownership decides who can open each service's channel in the first place.
 
-*"Even with the admin password, and even with code running inside the web server, an attacker can't make COLDKEEP's food unsafe, because QNX won't let them reach the cold."*
+*"An attacker with the admin password, and even with code running inside the web server, still can't make COLDKEEP's food unsafe, because QNX won't let them near the cold."*
 
 ## Results
 
@@ -30,7 +30,7 @@ Same attacks, two stores, recorded on **QNX 8.0 running in QEMU**: 5 runs, seed 
 | Governor restart after `kill -9` | n/a | **29.6 ms** (28.5–32.7) |
 | Cases in G6 safe hold while the governor was frozen 5 s | n/a | **8 of 8**, about 2.2 s after the freeze |
 
-The flood result comes from QNX priorities, which both stores use; it is not a difference between the architectures. Absolute jitter under emulation reflects the emulator. Full tables, the exact QNX error messages and the raw recordings are in [docs/RESULTS.md](docs/RESULTS.md). The host simulator gives similar results, but those numbers are labelled separately and are not QNX measurements.
+Both stores run at the same QNX priorities, so the flood row says something about QNX rather than about the two architectures, and under emulation the absolute jitter mostly reflects QEMU. [docs/RESULTS.md](docs/RESULTS.md) has the full tables, the exact QNX error messages and the raw recordings. The host simulator lands close to these numbers, but it isn't QNX, and RESULTS keeps its figures in a separate, labelled section.
 
 ## Run it
 
@@ -68,21 +68,29 @@ Needs Node 20+.
 
 ```sh
 cd host && npm ci
-# replay a recorded QEMU run (no QNX needed)
-npm run relay -- --replay ../docs/evidence/runs/qemu-run1.legacy.jsonl \
-                 --replay ../docs/evidence/runs/qemu-run1.protected.jsonl
 npm run build && npm run start -w @coldkeep/dashboard   # http://127.0.0.1:3000
 
-# or live from the two QEMU stores, recording until sim t=3600
-npm run relay -- --store legacy=127.0.0.1:17071 --store protected=127.0.0.1:17070 --record live1 --end 3600
-npm run attack -- --store legacy=127.0.0.1:18081 --store protected=127.0.0.1:18080 --a1-at 600
+# host simulator: press "Run attack" in the dashboard to pick campaigns and a seed
+npm run relay
+
+# or replay a recorded QEMU run (no QNX needed), with pause, speed and restart
+npm run relay -- --replay ../docs/evidence/runs/qemu-run1.legacy.jsonl \
+                 --replay ../docs/evidence/runs/qemu-run1.protected.jsonl
+
+# or live from the two QEMU stores, recording until sim t=3600;
+# --mgmt also enables the dashboard's "Run attack" (A1 and A2) and its Control view
+npm run relay -- --store legacy=127.0.0.1:17071 --store protected=127.0.0.1:17070 \
+                 --mgmt legacy=127.0.0.1:18081 --mgmt protected=127.0.0.1:18080 --record live1 --end 3600
+npm run attack -- --store legacy=127.0.0.1:18081 --store protected=127.0.0.1:18080 --a1-at 600   # same, from a terminal
 ```
 
-The compare view takes its figures from the run's own `summary` line. While a live run is still going, they are computed from the samples received so far, and the page says which source it is using. `make host-test` runs the schema, relay and attack-runner tests. CI also builds the dashboard and runs a Playwright smoke test in replay mode.
+The overview reads its figures from the run's own `summary` line, or computes them from the samples so far while a run is still going, and the header always tells you whether you're looking at the host simulator, a QEMU recording or the live targets. On QNX, A3 and A4 run from the store's own shell, so the dashboard only offers them in the host simulator.
 
-Everything the QNX features rely on was first checked on the target: [docs/QNX_FEATURES.md](docs/QNX_FEATURES.md).
+The **Control** view sends single operator commands (`set_setpoint`, `start_defrost`, `stop_defrost`, `set_fans`, `disable_alarms`) to the live stores and shows each store's verdict. It switches off in replay and simulator mode so a recording can't pass for a live command, and nothing in the dashboard can approve a key request. The System view gets relay health through the dashboard's `/api/relay` route while events keep flowing over the relay WebSocket; [docs/DASHBOARD.md](docs/DASHBOARD.md) has the details. `make host-test` runs the schema, relay and attack-runner tests, and CI also builds the dashboard and runs the Playwright tests in replay and simulator mode.
 
-Environment: QNX SDP 8.0, x86_64 image built with `mkqnximage`, QEMU (emulated, `-cpu max`) on macOS, `qcc -Vgcc_ntox86_64`. CI (GitHub Actions, Ubuntu + macOS) runs every host test; it cannot build the QNX target, which needs the licensed SDK.
+Before relying on any QNX feature we checked it on the target first; [docs/QNX_FEATURES.md](docs/QNX_FEATURES.md) has what we found.
+
+Environment: QNX SDP 8.0, an x86_64 image built with `mkqnximage`, QEMU (emulated, `-cpu max`) on macOS, and `qcc -Vgcc_ntox86_64`. CI on GitHub Actions runs every host test on Ubuntu and macOS, but it can't build the QNX target because that needs the licensed SDK.
 
 ## How COLDKEEP uses QNX
 
@@ -113,11 +121,12 @@ host/        relay (bridge/replay -> websocket, recorder), attack runner, dashbo
 scripts/     QEMU image/run, cross-build, deploy, comparison runs
 scenarios/   host simulator scenarios        tests/golden/  host golden outputs
 docs/        ARCHITECTURE RULES PLANT_MODEL THREAT_MODEL QNX_FEATURES RESULTS
+             DASHBOARD CODELAB
 ```
 
 ## Why the defaults are `admin/admin`
 
-On purpose. The reported attacks used default credentials. COLDKEEP's claim is that it stays safe **even when** the password is known and the web process is compromised.
+That's deliberate. The reported attacks got in with default credentials, and COLDKEEP's whole claim is that it stays safe **even when** the attacker knows the password and controls the web process.
 
 ## News context
 
