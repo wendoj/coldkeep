@@ -86,13 +86,16 @@ are similar but not byte-identical (unlike `sim-host`).
 | Package | What it does |
 |---|---|
 | [`shared`](../host/shared) | zod schemas for every recorded or streamed line, plus `StoreModel`, which builds one store's state from events. `computeReadouts()` takes the compare figures from the run's `summary` line, or computes them from the samples while a run is still going. |
-| [`relay`](../host/relay) | **Live:** connects to each store's bridge (QEMU forwards 7070 to 17070 + slot) and turns audit records into `decision`, `compliance` and `note` events. **Replay:** plays two recordings on one sim clock. Either way it serves WebSocket on port 7071. With `--record` it writes `recordings/<label>.<mode>.jsonl` in the `run-compare.py` format, and `--end` stops at a fixed sim time. |
+| [`relay`](../host/relay) | **Live:** connects to each store's bridge (QEMU forwards 7070 to 17070 + slot) and turns audit records into `decision`, `compliance` and `note` events; with `--mgmt` the dashboard can send A1 and A2 to both `mgmtd` through the attack runner, and send individual operator commands through the operator client. **Replay:** plays two recordings on one sim clock, which the dashboard can pause, speed up and restart. **Simulator** (no arguments): runs `sim-host/ck-sim` with the campaigns and seed the dashboard asks for, from a fixed scenario template, and plays the result. It serves WebSocket on port 7071 (localhost only) and accepts only the zod-typed `ClientMessage` requests. With `--record` it writes `recordings/<label>.<mode>.jsonl` in the `run-compare.py` format, and `--end` stops at a fixed sim time. |
 | [`attack`](../host/attack) | Runs A1 (credentialed takeover) and A2 (status flood) against both stores' `mgmtd` (8080 forwarded to 18080 + slot) at scripted sim times, and prints the transcript. A3 and A4 run on the target ([`scripts/run-compare.py`](../scripts/run-compare.py)). |
-| [`dashboard`](../host/dashboard) | Next.js app with five views: store, compare, attack console, audit & compliance (with CSV export and an incident report), and key requests. It has no approve button: key requests are approved at the store's local console. |
+| [`dashboard`](../host/dashboard) | Next.js app (shadcn/ui, Tailwind, Recharts) with seven views: overview (outcome, temperature chart, command outcomes, rules that fired, run context), cases, commands (both verdicts and privileged attempts), control (live operator commands to each store), audit (decisions, compliance CSV, events, incident report), key requests and system (relay health, store feeds, process events, governor status). "Run attack" sends campaigns through the relay; Control sends one operator command at a time. The browser talks WebSocket to the relay for events; `/api/relay` is a server-side health route. It has no approve button: key requests are approved at the store's local console. Details in [DASHBOARD.md](DASHBOARD.md). |
 
 ```
 QNX (QEMU slot 1, legacy)    bridge :7070 ─┐                   ┌─ dashboard :3000
 QNX (QEMU slot 0, protected) bridge :7070 ─┼─► relay :7071 ws ─┤
 recordings/*.jsonl (replay) ───────────────┘                   └─ recordings/<label>.*.jsonl
 attack runner ──► mgmtd :8080 on each store
+dashboard Control ──► relay ──► mgmtd :8080 on each store ──► brokerd ──► governord
 ```
+
+The Control path is the same authenticated API the attack runner uses. The relay can only send the operator subset (`set_setpoint`, `start_defrost`, `stop_defrost`, `set_fans`, `disable_alarms`) and only when it was started with `--mgmt`. It has no path to `keyconsole` and can't approve a key request. On the protected store, `mgmtd` → `brokerd` → `governord` → `casectl` is still the only way to reach the plant.
